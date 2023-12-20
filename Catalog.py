@@ -1,3 +1,5 @@
+import pandas as pd
+
 def select_PickOfArrival(arrival, picks):
     origin = ev.preferred_origin()
     find_pick = False
