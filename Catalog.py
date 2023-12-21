@@ -1,4 +1,6 @@
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 def select_PickOfArrival(arrival, picks):
     find_pick = False
@@ -33,4 +35,7 @@ class inspector:
         self.df_phases['network'] = self.df_phases.apply(lambda row: row.waveform_id.network_code, axis=1)
         self.df_phases['channel'] = self.df_phases.apply(lambda row: row.waveform_id.channel_code, axis=1)
         self.df_phases['traveltime'] = self.df_phases.apply(lambda row: row.time-row.otime, axis=1)
+    def plot_hist_of_numeric(self, **kwargs):
+        self.df_phases.hist(**kwargs)
+        plt.tight_layout()
 
