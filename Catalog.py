@@ -13,6 +13,13 @@ def select_PickOfArrival(arrival, picks):
     return pick
 
 
+def make_autopct(values):
+    def my_autopct(pct):
+        total = sum(values)
+        val = int(round(pct*total/100.0))
+        return '{p:.1f}% ({v:d})'.format(p=pct,v=val)
+    return my_autopct
+
 
 class inspector:
     def __init__(self, catalog):
@@ -38,8 +45,27 @@ class inspector:
     def plot_hist_of_numeric(self, **kwargs):
         self.df_phases.hist(**kwargs)
         plt.tight_layout()
+    def plot_pie_of_none_numeric(self, **kwargs):
+        lst = ['network', 'channel']
+        for key in lst:
+            df = self.df_phases[key]
+            counts = df.value_counts()
+            # print(counts)
+            counts.plot(kind='pie', autopct=make_autopct(counts.values), title=key, **kwargs)
+            plt.tight_layout()
+            plt.show()
+    def plot_bar_of_none_numeric(self, **kwargs):
+        lst = ['network', 'channel']
+        for key in lst:
+            df = self.df_phases[key]
+            counts = df.value_counts()
+            # print(counts)
+            counts.plot(kind='bar', title=key, **kwargs)
+            plt.tight_layout()
+            plt.show()
     def plot_traveltime(self):
         sns.scatterplot(self.df_phases, x='distance', y='traveltime', s=10, hue='phase')
     def plot_residual_vs_distance(self):
         sns.scatterplot(self.df_phases, x='distance', y='time_residual', alpha=0.4, s=20, color='black')
+    
 
