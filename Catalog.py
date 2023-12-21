@@ -38,4 +38,7 @@ class inspector:
     def plot_hist_of_numeric(self, **kwargs):
         self.df_phases.hist(**kwargs)
         plt.tight_layout()
+    def plot_traveltime(self):
+        sns.scatterplot(self.df_phases, x='distance', y='traveltime', s=10, hue='phase')
+
 
