@@ -65,6 +65,11 @@ class inspector:
             plt.show()
     def plot_traveltime(self):
         sns.scatterplot(self.df_phases, x='distance', y='traveltime', s=10, hue='phase')
+
+    def plot_bar_phasetype(self):
+        counts = self.df_phases['phase'].value_counts()
+        _ = counts.plot(kind='bar', edgecolor='k')
+
     def plot_residual_vs_distance(self):
         sns.scatterplot(self.df_phases, x='distance', y='time_residual', alpha=0.4, s=20, color='black')
     
