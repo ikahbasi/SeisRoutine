@@ -73,4 +73,24 @@ class inspector:
     def plot_residual_vs_distance(self):
         sns.scatterplot(self.df_phases, x='distance', y='time_residual', alpha=0.4, s=20, color='black')
     
+    def plot_hist_SminusP(self, bins=30, figsize=(7, 4)):
+        ### Selecting P- and S-type phases
+        msk_p = self.df_phases['phase'].str.upper().str.startswith('P')
+        msk_s = self.df_phases['phase'].str.upper().str.startswith('S')
+        ###
+        keys = ['otime', 'resource_id', 'network', 'station', 'phase', 'time']
+        df_p = self.df_phases[msk_p][keys]
+        df_s = self.df_phases[msk_s][keys]
+        ### Changing type of the origin time
+        df_p['otime'] = df_p['otime'].apply(lambda x: x.timestamp)
+        df_s['otime'] = df_s['otime'].apply(lambda x: x.timestamp)
+        ### merge
+        df_merge = df_p.merge(df_s, how='inner', on=['station', 'network', 'otime'])
+        sp_interval = df_merge['time_y'] - df_merge['time_x']
+        print(f'Number of calculated s-p: {sp_interval.size}')
+        print(f'Number of all phases: {self.df_phases.shape[0]}')
+        print(f'Number of P-type phases: {df_p.shape[0]}')
+        print(f'Number of S-type phases: {df_s.shape[0]}')
+        sp_interval.hist(edgecolor='k', bins=bins, figsize=figsize)
+
 
