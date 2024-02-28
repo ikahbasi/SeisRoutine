@@ -122,12 +122,18 @@ class inspector:
         print(f'Number of S-type phases: {df_s.shape[0]}')
         sp_interval.hist(edgecolor='k', bins=bins, figsize=figsize)
 
-    def plot_phase_mag_dist(self):
-        mag = self.df_phases['magnitude']
-        dist = self.df_phases['distance']
+    def plot_phase_mag_dist(self, lst_stations=None):
+        df = self.df_phases[['magnitude', 'distance', 'station']]
+        if lst_stations:
+            lst_stations = '|'.join(lst_stations)
+            df = df[df['station'].str.contains(lst_stations, case=False)]
+        msk = df.isna().sum(axis=1)
+        msk = msk==0
+        mag = df['magnitude'][msk]
+        dist = df['distance'][msk] * 111
         #
         fig, ax0 = plt.subplots()
-        hight, xedges, yedges = np.histogram2d(dist*111, mag,
+        hight, xedges, yedges = np.histogram2d(dist, mag,
                                                bins=(40, 20), density=False)
         xcenters = (xedges[:-1] + xedges[1:]) / 2
         ycenters = (yedges[:-1] + yedges[1:]) / 2
