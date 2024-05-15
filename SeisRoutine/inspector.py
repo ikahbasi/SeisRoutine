@@ -34,9 +34,9 @@ class catalog:
     '''
     Docstring
     '''
-    def __init__(self, catalog):
+    def __init__(self, cat):
         self.df_phases = None
-        self.catalog = catalog
+        self.catalog = cat
         self.__make_df()
 
     def __make_df(self):

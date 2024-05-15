@@ -1,1 +1,1 @@
-from SeisRoutine import Catalog
+from SeisRoutine import inspector
