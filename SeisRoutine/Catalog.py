@@ -44,7 +44,7 @@ class inspector:
         for ev in self.catalog:
             origin = ev.preferred_origin()
             magnitude = ev.preferred_magnitude()
-            if magnitude == None:
+            if magnitude is None:
                 magnitude = None
             else:
                 magnitude = magnitude.mag
@@ -104,7 +104,7 @@ class inspector:
         sns.scatterplot(self.df_phases,
                         x='distance', y='time_residual',
                         alpha=0.4, s=20, color='black')
-    
+
     def plot_hist_SminusP(self, bins=30, figsize=(7, 4)):
         # Selecting P- and S-type phases
         msk_p = self.df_phases['phase'].str.upper().str.startswith('P')
@@ -132,7 +132,7 @@ class inspector:
             lst_stations = '|'.join(lst_stations)
             df = df[df['station'].str.contains(lst_stations, case=False)]
         msk = df.isna().sum(axis=1)
-        msk = msk==0
+        msk = msk == 0
         mag = df['magnitude'][msk]
         dist = df['distance'][msk] * 111
         #
