@@ -5,7 +5,7 @@ import numpy as np
 from obspy.imaging.cm import pqlx
 
 
-def select_PickOfArrival(arrival, picks):
+def select_pick_of_arrival(arrival, picks):
     '''
     Docstring
     '''
@@ -30,7 +30,7 @@ def make_autopct(values):
     return my_autopct
 
 
-class inspector:
+class catalog:
     '''
     Docstring
     '''
@@ -49,7 +49,7 @@ class inspector:
             else:
                 magnitude = magnitude.mag
             for arrival in origin.arrivals:
-                pick = select_PickOfArrival(arrival, ev.picks)
+                pick = select_pick_of_arrival(arrival, ev.picks)
                 d = {'otime': origin.time, 'magnitude': magnitude}
                 d.update(pick.items())
                 for key, val in arrival.items():
