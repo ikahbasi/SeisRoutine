@@ -43,7 +43,11 @@ class inspector:
         lst = []
         for ev in self.catalog:
             origin = ev.preferred_origin()
-            magnitude = ev.preferred_magnitude().mag
+            magnitude = ev.preferred_magnitude()
+            if magnitude == None:
+                magnitude = None
+            else:
+                magnitude = magnitude.mag
             for arrival in origin.arrivals:
                 pick = select_PickOfArrival(arrival, ev.picks)
                 d = {'otime': origin.time, 'magnitude': magnitude}
