@@ -40,6 +40,22 @@ class catalog:
         self.__make_df()
 
     def __make_df(self):
+        ######################### Events #########################
+        lst = []
+        for ev in self.catalog:
+            origin = ev.preferred_origin()
+            magnitude = ev.preferred_magnitude()
+            if magnitude is None:
+                magnitude = None
+            else:
+                magnitude = magnitude.mag
+            d = {'otime': origin.time,
+                    'latitude': origin.latitude,
+                    'longitude': origin.longitude,
+                    'magnitude': magnitude}
+            lst.append(d)
+        self.df_events = pd.DataFrame(lst)
+        ######################### Phases #########################
         lst = []
         for ev in self.catalog:
             origin = ev.preferred_origin()
@@ -67,6 +83,7 @@ class catalog:
         # Convert distance from degree to kilometre.
         self.df_phases['distance'] = self.df_phases.apply(
             lambda row: row.distance * 111, axis=1)
+        
 
     def plot_hist_of_numeric(self, **kwargs):
         self.df_phases.hist(**kwargs)
@@ -165,3 +182,27 @@ class catalog:
         plt.ylabel('Magnitude')
         ax0.set_title('Phases distribution\n'
                       'according to magnitude and distance')
+
+    def plot_station_participation(self, station_coords,
+                                   map_focus='total', map_margin=0.05):
+        phase_counts = self.df_phases['station'].value_counts()
+        df = pd.merge(phase_counts, station_coords,
+                      how='inner', on=['station'])
+        _, ax = plt.subplots()
+        ax.set_aspect('equal')
+        sns.scatterplot(self.df_events,
+                        x='longitude', y='latitude',
+                        alpha=0.2, s=20, color='black', ax=ax)
+        df.plot.scatter(x='longitude', y='latitude',
+                        c='count', colormap='varidis',
+                        edgecolors='r', linewidth=0.5,
+                        marker='v', s=50, ax=ax)
+        station_coords[['longitude', 'latitude', 'station']].apply(
+            lambda x: ax.text(*x), axis=1)
+        if map_focus == 'stations':
+            lons = [station_coords['longitude'].min() - map_margin,
+                    station_coords['longitude'].max() + map_margin]
+            lats = [station_coords['latitude'].min() - map_margin,
+                    station_coords['latitude'].max() + map_margin]
+            plt.xlim(lons)
+            plt.ylim(lats)
