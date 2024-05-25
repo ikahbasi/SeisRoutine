@@ -206,3 +206,9 @@ class catalog:
                     station_coords['latitude'].max() + map_margin]
             plt.xlim(lons)
             plt.ylim(lats)
+
+    def __str__(self):
+        row, col = self.df_phases.shape
+        txt = f'Number of Phases: {row}'
+        txt += f'\nNumber of Attributes: {col}'
+        return txt
