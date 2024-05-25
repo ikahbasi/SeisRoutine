@@ -64,6 +64,9 @@ class catalog:
             lambda row: row.waveform_id.channel_code, axis=1)
         self.df_phases['traveltime'] = self.df_phases.apply(
             lambda row: row.time-row.otime, axis=1)
+        # Convert distance from degree to kilometre.
+        self.df_phases['distance'] = self.df_phases.apply(
+            lambda row: row.distance * 111, axis=1)
 
     def plot_hist_of_numeric(self, **kwargs):
         self.df_phases.hist(**kwargs)
@@ -93,17 +96,26 @@ class catalog:
             plt.show()
 
     def plot_traveltime(self):
+        _, ax = plt.subplots()
         sns.scatterplot(self.df_phases,
                         x='distance', y='traveltime', s=10, hue='phase')
+        ax.set_xlabel('Distance [km]')
+        ax.set_ylabel('Travel Time [sec]')
 
     def plot_bar_phasetype(self):
         counts = self.df_phases['phase'].value_counts()
-        _ = counts.plot(kind='bar', edgecolor='k')
+        ax = counts.plot(kind='bar', edgecolor='k')
+        ax.set_xlabel('Phase Type')
+        ax.set_ylabel('Abundance [count]')
 
     def plot_residual_vs_distance(self):
+        _, ax = plt.subplots()
         sns.scatterplot(self.df_phases,
                         x='distance', y='time_residual',
-                        alpha=0.4, s=20, color='black')
+                        alpha=0.4, s=20, color='black',
+                        ax=ax)
+        ax.set_xlabel('Distance [km]')
+        ax.set_ylabel('Abundance [count]')
 
     def plot_hist_SminusP(self, bins=30, figsize=(7, 4)):
         # Selecting P- and S-type phases
@@ -124,7 +136,9 @@ class catalog:
         print(f'Number of all phases: {self.df_phases.shape[0]}')
         print(f'Number of P-type phases: {df_p.shape[0]}')
         print(f'Number of S-type phases: {df_s.shape[0]}')
-        sp_interval.hist(edgecolor='k', bins=bins, figsize=figsize)
+        ax = sp_interval.hist(edgecolor='k', bins=bins, figsize=figsize)
+        ax.set_xlabel('S Minus P Time [sec]')
+        ax.set_ylabel('Abundance [count]')
 
     def plot_phase_mag_dist(self, lst_stations=None):
         df = self.df_phases[['magnitude', 'distance', 'station']]
@@ -134,7 +148,7 @@ class catalog:
         msk = df.isna().sum(axis=1)
         msk = msk == 0
         mag = df['magnitude'][msk]
-        dist = df['distance'][msk] * 111
+        dist = df['distance'][msk]
         #
         fig, ax0 = plt.subplots()
         hight, xedges, yedges = np.histogram2d(dist, mag,
