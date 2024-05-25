@@ -194,7 +194,7 @@ class catalog:
                         x='longitude', y='latitude',
                         alpha=0.2, s=20, color='black', ax=ax)
         df.plot.scatter(x='longitude', y='latitude',
-                        c='count', colormap='varidis',
+                        c='count', colormap='viridis',
                         edgecolors='r', linewidth=0.5,
                         marker='v', s=50, ax=ax)
         station_coords[['longitude', 'latitude', 'station']].apply(
