@@ -25,25 +25,25 @@ def density_meshgrid(x, y, xstep, ystep, zreplace=0.9):
     return xcenters, ycenters, z
 
 
-def limited_hist(data, bins_range=(-5, 5, 0.5), bins_type='center'):
-    '''
-    Doc ???
-    '''
-    bins = np.arange(*bins_range)
-    bin_min, bin_max, bin_step = bins_range
-    if bins_type == 'center':
-        bins = bins - (bin_step/2)
-    bin_labels = bins.copy()
-    ###
-    if data.min() < bins[0]:
-        data[data < bins[0]] = bins[0] + (bin_step/4)
-        bin_labels[0] = data.min()
-    if bins[-1] < data.max():
-        data[data > bins[-1]] = bins[-1] - (bin_step/4)
-        bin_labels[-1] = data.max()
-    ###
-    hist, bin_edges = np.histogram(data, bins=bins)
-    return hist, bin_edges, bin_labels
+# def limited_hist(data, bins_range=(-5, 5, 0.5), bins_type='center'):
+#     '''
+#     Doc ???
+#     '''
+#     bins = np.arange(*bins_range)
+#     bin_min, bin_max, bin_step = bins_range
+#     if bins_type == 'center':
+#         bins = bins - (bin_step/2)
+#     bin_labels = bins.copy()
+#     ###
+#     if data.min() < bins[0]:
+#         data[data < bins[0]] = bins[0] + (bin_step/4)
+#         bin_labels[0] = data.min()
+#     if bins[-1] < data.max():
+#         data[data > bins[-1]] = bins[-1] - (bin_step/4)
+#         bin_labels[-1] = data.max()
+#     ###
+#     hist, bin_edges = np.histogram(data, bins=bins)
+#     return hist, bin_edges, bin_labels
 
 # def limited_hist(data, bins_range=(-5, 5, 0.5), bins_type='center'):
 #     hist, bin_edges, bin_labels = limited_hist(data, bins_range, bins_type)
@@ -58,10 +58,10 @@ def limited_hist(data, bins_range=(-5, 5, 0.5), bins_type='center'):
 #     #fig = _finalise_figure(fig=fig, **kwargs)
 
 
-def ResidualHistogramVertical(arr, ax, ylim=[-5, 5], ystep=0.5):
-    bins = np.arange(ylim[0]+ystep/2, ylim[1], ystep)
-    bins[0] = ylim[0]
-    bins[-1] = ylim[1]
-    ax.hist(arr, bins=bins,
-            alpha=1, edgecolor='k', facecolor='g',
-            orientation='horizontal', log=False)
+# def ResidualHistogramVertical(arr, ax, ylim=[-5, 5], ystep=0.5):
+#     bins = np.arange(ylim[0]+ystep/2, ylim[1], ystep)
+#     bins[0] = ylim[0]
+#     bins[-1] = ylim[1]
+#     ax.hist(arr, bins=bins,
+#             alpha=1, edgecolor='k', facecolor='g',
+#             orientation='horizontal', log=False)
