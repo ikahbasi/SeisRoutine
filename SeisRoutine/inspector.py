@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 from obspy.imaging.cm import pqlx
+import SeisRoutine.plot as srp
 
 
 def select_pick_of_arrival(arrival, picks):
@@ -125,14 +126,27 @@ class catalog:
         ax.set_xlabel('Phase Type')
         ax.set_ylabel('Abundance [count]')
 
-    def plot_residual_vs_distance(self):
-        _, ax = plt.subplots()
-        sns.scatterplot(self.df_phases,
-                        x='distance', y='time_residual',
-                        alpha=0.4, s=20, color='black',
-                        ax=ax)
+    def plot_residual_vs_distance(self, kind='density'):
+        '''
+        kind: normal or density
+        '''
+        fig, ax = plt.subplots()
+        if kind == 'normal':
+            sns.scatterplot(self.df_phases,
+                            x='distance', y='time_residual',
+                            alpha=0.4, s=20, color='black',
+                            ax=ax)
+        elif kind == 'density':
+            x = self.df_phases['distance'].to_numpy()
+            y = self.df_phases['time_residual'].to_numpy()
+            srp.plot_density_meshgrid(
+                x, y,
+                xlabel='Distance [km]', ylabel='Residual Time [s]',
+                xstep=5, ystep=0.1,
+                size=(6, 4),
+                ax=ax, fig=fig)
         ax.set_xlabel('Distance [km]')
-        ax.set_ylabel('Abundance [count]')
+        ax.set_ylabel('Residual Time [s]')
 
     def plot_hist_SminusP(self, bins=30, figsize=(7, 4)):
         # Selecting P- and S-type phases
