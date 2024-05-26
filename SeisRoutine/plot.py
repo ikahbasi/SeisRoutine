@@ -1,6 +1,8 @@
 import os
 import matplotlib.pyplot as plt
-
+from obspy.imaging.cm import pqlx
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import SeisRoutine.core as src
 
 def _finalise_figure(fig, **kwargs):
     """
@@ -15,14 +17,14 @@ def _finalise_figure(fig, **kwargs):
     ylim = kwargs.get("ylim")
     return_fig = kwargs.get("return_figure", False)
     size = kwargs.get("size", (10.5, 7.5))
-    
+
     fig.set_size_inches(size)
     for ax in fig.axes:
         ax.xaxis.set_tick_params(labelsize=15)
         ax.yaxis.set_tick_params(labelsize=15)
         for axis in ['top', 'bottom', 'left', 'right']:
             ax.spines[axis].set_linewidth(2)
-    
+
     if title:
         plt.title(title, fontsize=25)
     if xlim:
@@ -41,3 +43,48 @@ def _finalise_figure(fig, **kwargs):
         return fig
     else:
         return None
+
+
+def plot_density_meshgrid(x, y,
+                          xstep, ystep,
+                          xlabel='Distance [km]',
+                          ylabel='Time Difference',
+                          ax=None, fig=None,
+                          show_cmap=True, norm='log',
+                          **kwargs):
+    '''
+    Doc ???
+    '''
+    xcenters, ycenters, z = src.density_meshgrid(
+        x=x, y=y, xstep=xstep, ystep=ystep, zreplace=0.9)
+    ###
+    if ax is None:
+        fig, ax = plt.subplots()
+    im = ax.pcolormesh(xcenters, ycenters, z,
+                       cmap=pqlx,
+                       shading='gouraud', norm=norm)
+    if show_cmap:
+        cbaxes = inset_axes(ax, width="20%", height="2%", loc=1,
+                            bbox_to_anchor=(-0.02, 0., 1, 1),
+                            bbox_transform=ax.transAxes,)
+        cbar = fig.colorbar(im, cax=cbaxes, orientation='horizontal')
+        cbaxes.xaxis.set_ticks_position("bottom")
+        cbar.ax.set_xlabel('Counts')
+    #
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid()
+    _finalise_figure(fig, **kwargs)
+    return im
+
+
+# def histogram(arr, ax, lim=(-5, 5), step=0.5):
+#     '''
+#     Docs ???
+#     '''
+#     bins = np.arange(lim[0]+step/2, lim[1], step)
+#     bins[0] = lim[0]
+#     bins[-1] = lim[1]
+#     ax.hist(arr, bins=bins,
+#             alpha=1, edgecolor='k', facecolor='g',
+#             orientation='horizontal', log=False)
