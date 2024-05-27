@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from obspy.imaging.cm import pqlx
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import SeisRoutine.core as src
+import numpy as np
 
 def _finalise_figure(fig, **kwargs):
     """
@@ -78,13 +79,16 @@ def plot_density_meshgrid(x, y,
     return im
 
 
-# def histogram(arr, ax, lim=(-5, 5), step=0.5):
-#     '''
-#     Docs ???
-#     '''
-#     bins = np.arange(lim[0]+step/2, lim[1], step)
-#     bins[0] = lim[0]
-#     bins[-1] = lim[1]
-#     ax.hist(arr, bins=bins,
-#             alpha=1, edgecolor='k', facecolor='g',
-#             orientation='horizontal', log=False)
+def histogram(arr, bins_range=(-5, 5.5, 0.5), ax=None):
+    '''
+    Docs ???
+    '''
+    bins_min, bins_max, bins_step = bins_range
+    if ax is None:
+        fig, ax = plt.subplots()
+    #
+    bins = np.arange(*bins_range)
+    bins -= bins_step/2
+    ax.hist(arr, bins=bins,
+            alpha=1, edgecolor='k', facecolor='g',
+            orientation='horizontal', log=False)

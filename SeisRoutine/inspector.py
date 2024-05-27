@@ -130,12 +130,17 @@ class catalog:
         '''
         kind: normal or density
         '''
-        fig, ax = plt.subplots()
+        fig, (ax1, ax2) = plt.subplots(
+            1, 2, figsize=(12, 6),
+            sharey='row', sharex='col',
+            gridspec_kw={'width_ratios': [5, 1]})
+        plt.subplots_adjust(bottom=0.15, hspace=0, wspace=0)
+        # fig, ax = plt.subplots()
         if kind == 'normal':
             sns.scatterplot(self.df_phases,
                             x='distance', y='time_residual',
                             alpha=0.4, s=20, color='black',
-                            ax=ax)
+                            ax=ax1)
         elif kind == 'density':
             x = self.df_phases['distance'].to_numpy()
             y = self.df_phases['time_residual'].to_numpy()
@@ -144,9 +149,11 @@ class catalog:
                 xlabel='Distance [km]', ylabel='Residual Time [s]',
                 xstep=5, ystep=0.1,
                 size=(6, 4),
-                ax=ax, fig=fig)
-        ax.set_xlabel('Distance [km]')
-        ax.set_ylabel('Residual Time [s]')
+                ax=ax1, fig=fig, show=False)
+        srp.histogram(arr=self.df_phases['time_residual'].to_numpy(),
+                      bins_range=(-5, 5.5, 0.5), ax=ax2)
+        # ax.set_xlabel('Distance [km]')
+        # ax.set_ylabel('Residual Time [s]')
 
     def plot_hist_SminusP(self, bins=30, figsize=(7, 4)):
         # Selecting P- and S-type phases
