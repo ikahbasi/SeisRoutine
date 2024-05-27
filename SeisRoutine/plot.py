@@ -4,6 +4,8 @@ from obspy.imaging.cm import pqlx
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import SeisRoutine.core as src
 import numpy as np
+import math
+
 
 def _finalise_figure(fig, **kwargs):
     """
@@ -31,7 +33,7 @@ def _finalise_figure(fig, **kwargs):
     if xlim:
         plt.xlim(xlim)
     if ylim:
-        plt.ylim(top=ylim[1])
+        plt.ylim(ylim)
     if save:
         path = os.path.dirname(savefile)
         if path:
@@ -76,19 +78,23 @@ def plot_density_meshgrid(x, y,
     ax.set_ylabel(ylabel)
     ax.grid()
     _finalise_figure(fig, **kwargs)
-    return im
 
 
-def histogram(arr, bins_range=(-5, 5.5, 0.5), ax=None):
+def histogram(arr, step=0.5, log=True,
+              ax=None, fig=None, **kwargs):
     '''
     Docs ???
     '''
-    bins_min, bins_max, bins_step = bins_range
+    bins_min = math.ceil(min(arr))
+    while bins_min > min(arr):
+        bins_min -= step
+    bins_max = math.ceil(max(arr)) + step
     if ax is None:
         fig, ax = plt.subplots()
     #
-    bins = np.arange(*bins_range)
-    bins -= bins_step/2
+    bins = np.arange(bins_min, bins_max, step)
+    bins -= step/2
     ax.hist(arr, bins=bins,
             alpha=1, edgecolor='k', facecolor='g',
-            orientation='horizontal', log=False)
+            orientation='horizontal', log=log)
+    _finalise_figure(fig, **kwargs)

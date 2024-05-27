@@ -126,10 +126,14 @@ class catalog:
         ax.set_xlabel('Phase Type')
         ax.set_ylabel('Abundance [count]')
 
-    def plot_residual_vs_distance(self, kind='density'):
+    def plot_residual_vs_distance(self, kind='density',
+                                  ystep=0.5, xstep=5,
+                                  histlog=True,
+                                  **kwargs):
         '''
         kind: normal or density
         '''
+        kwargs['show'] = False
         fig, (ax1, ax2) = plt.subplots(
             1, 2, figsize=(12, 6),
             sharey='row', sharex='col',
@@ -147,11 +151,17 @@ class catalog:
             srp.plot_density_meshgrid(
                 x, y,
                 xlabel='Distance [km]', ylabel='Residual Time [s]',
-                xstep=5, ystep=0.1,
-                size=(6, 4),
-                ax=ax1, fig=fig, show=False)
+                xstep=xstep, ystep=ystep,
+                ax=ax1, fig=fig, **kwargs)
         srp.histogram(arr=self.df_phases['time_residual'].to_numpy(),
-                      bins_range=(-5, 5.5, 0.5), ax=ax2)
+                      step=ystep, log=histlog,
+                      ax=ax2, fig=fig, **kwargs)
+        ylim = kwargs.get('ylim')
+        if ylim:
+            ax2.set_ylim(*ylim)
+            kwargs.pop('ylim')
+        kwargs['show'] = True
+        srp._finalise_figure(fig=fig, **kwargs)
         # ax.set_xlabel('Distance [km]')
         # ax.set_ylabel('Residual Time [s]')
 
