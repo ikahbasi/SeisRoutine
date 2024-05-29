@@ -240,12 +240,17 @@ class catalog:
 
     def plot_seismicity_phases(self):
         '''
-        It must perform on each type of P and S seperatly
+        It must perform on each type of P and S seperatly ???
         '''
         gb = self.df_phases.sort_values(
             by=['time']).groupby(by=['network', 'station'])
-        gb = gb['time'].apply(lambda x:x.diff())
+        gb = gb['time'].apply(lambda x: x.diff())
         gb.plot.hist(alpha=1, edgecolor='k', facecolor='g')
+
+    def plot_seismicity_events(self):
+        dt = self.df_events['otime'].apply(lambda x: x.datetime)
+        dt.hist(alpha=1, edgecolor='k', facecolor='g', grid=False)
+        plt.xticks(rotation=90)
 
     def __str__(self):
         row, col = self.df_phases.shape
