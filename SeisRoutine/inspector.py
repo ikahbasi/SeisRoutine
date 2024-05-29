@@ -238,6 +238,15 @@ class catalog:
             plt.xlim(lons)
             plt.ylim(lats)
 
+    def plot_seismicity_phases(self):
+        '''
+        It must perform on each type of P and S seperatly
+        '''
+        gb = self.df_phases.sort_values(
+            by=['time']).groupby(by=['network', 'station'])
+        gb = gb['time'].apply(lambda x:x.diff())
+        gb.plot.hist(alpha=1, edgecolor='k', facecolor='g')
+
     def __str__(self):
         row, col = self.df_phases.shape
         txt = f'Number of Phases: {row}'
