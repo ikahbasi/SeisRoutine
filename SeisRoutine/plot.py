@@ -8,6 +8,12 @@ import math
 import inspect
 
 
+def _get_proper_kwargs(func: object, kwargs: dict):
+    sig = inspect.signature(func)
+    kw = {k: v for k, v in kwargs.items()
+          if k in sig.parameters.keys()}
+    return kw
+
 
 def _finalise_ax(ax,
                  xlabel: str=None, ylabel: str=None,
@@ -76,16 +82,12 @@ def plot_density_meshgrid(x: np.array, y: np.array,
     if ax is None:
         fig, ax = plt.subplots()
     # Get a proper kwargs for the plt.pcolormesh function.
-    sig = inspect.signature(plt.pcolormesh)
-    kw = {k: v for k, v in kwargs.items()
-          if k in sig.parameters.keys()}
+    kw = _get_proper_kwargs(
+        func=plt.pcolormesh, kwargs=kwargs)
     im = ax.pcolormesh(xcenters, ycenters, z,
                        cmap=pqlx,
                        shading='gouraud', **kw)
     #
-    # xlim = kwargs.pop('xlim', None)
-    # ax.set_xlim(xlim)
-    # Show the colorbar
     cbaxes = ax.inset_axes(
         bounds=[0.8, 0.94, 0.15, 0.03],
         transform=ax.transAxes
@@ -94,10 +96,8 @@ def plot_density_meshgrid(x: np.array, y: np.array,
     cbaxes.xaxis.set_ticks_position("bottom")
     cbar.ax.set_xlabel('Counts')
     #
-    sig = inspect.signature(_finalise_ax)
-    kw = {k: v for k, v in kwargs.items()
-          if k in sig.parameters.keys()}
-    print(kw)
+    kw = _get_proper_kwargs(
+        func=_finalise_ax, kwargs=kwargs)
     _finalise_ax(ax, **kw)
     #
     _finalise_figure(fig, **kwargs)
@@ -120,5 +120,8 @@ def histogram(arr, step=0.5, log=True,
     ax.hist(arr, bins=bins,
             alpha=1, edgecolor='k', facecolor='g',
             orientation='horizontal', log=log)
-    _finalise_ax(ax, **kwargs)
+    #
+    kw = _get_proper_kwargs(
+        func=_finalise_ax, kwargs=kwargs)
+    _finalise_ax(ax, **kw)
     _finalise_figure(fig, **kwargs)
