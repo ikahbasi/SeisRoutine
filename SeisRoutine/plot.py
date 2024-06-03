@@ -20,7 +20,7 @@ def _finalise_ax(ax,
                  xlabel: str=None, ylabel: str=None,
                  xlim: list=None, ylim: list=None,
                  labelsize: int=10, linewidth: int=2,
-                 grid: bool=False):
+                 grid: bool=False, **kwargs):
     """
     Internal function to wrap up an ax.
     {plotting_kwargs}
@@ -72,28 +72,28 @@ def _finalise_figure(fig, **kwargs):
 
 def plot_density_meshgrid(x: np.array, y: np.array,
                           xstep: float, ystep: float,
-                          ax=None, fig=None,
+                          ax=None,
                           **kwargs):
     '''
     Doc ???
     '''
-    xcenters, ycenters, z = src.density_meshgrid(
-        x=x, y=y, xstep=xstep, ystep=ystep, zreplace=0.9)
-    ###
     if ax is None:
         fig, ax = plt.subplots()
-    # Get a proper kwargs for the plt.pcolormesh function.
-    kw = _get_proper_kwargs(
-        func=plt.pcolormesh, kwargs=kwargs)
-    im = ax.pcolormesh(xcenters, ycenters, z,
-                       cmap=pqlx,
-                       shading='gouraud', **kw)
     #
+    xcenters, ycenters, z = src.density_meshgrid(
+        x=x, y=y, xstep=xstep, ystep=ystep, zreplace=0.9
+    )
+    # Get a proper kwargs for the plt.pcolormesh function.
+    kw = _get_proper_kwargs(func=plt.pcolormesh, kwargs=kwargs)
+    im = ax.pcolormesh(
+        xcenters, ycenters, z,
+        cmap=pqlx, shading='gouraud', **kw
+    )
     cbaxes = ax.inset_axes(
         bounds=[0.8, 0.94, 0.15, 0.03],
         transform=ax.transAxes
-        )
-    cbar = fig.colorbar(im, cax=cbaxes, orientation='horizontal')
+    )
+    cbar = ax.figure.colorbar(im, cax=cbaxes, orientation='horizontal')
     cbaxes.xaxis.set_ticks_position("bottom")
     cbar.ax.set_xlabel('Counts')
     #
@@ -101,7 +101,7 @@ def plot_density_meshgrid(x: np.array, y: np.array,
         func=_finalise_ax, kwargs=kwargs)
     _finalise_ax(ax, **kw)
     #
-    _finalise_figure(fig, **kwargs)
+    _finalise_figure(ax.figure, **kwargs)
 
 
 def histogram(arr, step=0.5, log=True,
@@ -109,12 +109,13 @@ def histogram(arr, step=0.5, log=True,
     '''
     Docs ???
     '''
+    if ax is None:
+        fig, ax = plt.subplots()
+    #
     bins_min = 0
     while bins_min > min(arr):
         bins_min -= step
     bins_max = math.ceil(max(arr)) + step
-    if ax is None:
-        fig, ax = plt.subplots()
     #
     bins = np.arange(bins_min, bins_max, step)
     bins -= step/2
@@ -125,24 +126,32 @@ def histogram(arr, step=0.5, log=True,
     kw = _get_proper_kwargs(
         func=_finalise_ax, kwargs=kwargs)
     _finalise_ax(ax, **kw)
-    _finalise_figure(fig, **kwargs)
+    _finalise_figure(ax.figure, **kwargs)
 
 
 def density_hist(x: np.array, y: np.array,
                  xstep: float, ystep: float,
                  kind: str='density', histlog: bool=True,
+                 axes: object=None,
                  **kwargs):
     #
-    fig, (ax1, ax2) = plt.subplots(
-        1, 2,
-        figsize=(12, 6),
-        sharey='row',# sharex='col',
-        gridspec_kw={'width_ratios': [5, 1]})
-    plt.subplots_adjust(bottom=0.15, hspace=0, wspace=0)
+    file_management = {'save': kwargs.get('save', False),
+                       'show': kwargs.get('show', False)}
+    kwargs.update(save=False, show=False)
+    if axes is None:
+        fig, (ax1, ax2) = plt.subplots(
+            1, 2,
+            figsize=(12, 6),
+            sharey='row',# sharex='col',
+            gridspec_kw={'width_ratios': [5, 1]})
+        plt.subplots_adjust(bottom=0.15, hspace=0, wspace=0)
+    else:
+        (ax1, ax2) = axes
     #
     if kind == 'scatter':
-        kw = _get_proper_kwargs(func=sns.scatterplot,
-                                kwargs=kwargs)
+        kw = _get_proper_kwargs(
+            func=sns.scatterplot, kwargs=kwargs
+        )
         sns.scatterplot(
             x=x, y=y,
             alpha=0.4, s=20, color='black',
@@ -152,13 +161,13 @@ def density_hist(x: np.array, y: np.array,
         plot_density_meshgrid(
             x, y,
             xstep=xstep, ystep=ystep,
-            ax=ax1, fig=fig, show=False,
-            **kwargs
+            ax=ax1, **kwargs
         )
     kw = _get_proper_kwargs(func=_finalise_ax, kwargs=kwargs)
     _finalise_ax(ax1, **kw)
     #
-    _ = kwargs.pop('ylabel', None)
+    for key in ['ylabel', 'xlim', 'ylim']:
+        _ = kwargs.pop(key, None)
     kwargs['xlabel'] =  'Abundance'
     histogram(
         arr=y,
@@ -166,3 +175,5 @@ def density_hist(x: np.array, y: np.array,
         ax=ax2, fig=fig,
         **kwargs
     )
+    kwargs.update(file_management)
+    _finalise_figure(ax1.figure, **kwargs)
