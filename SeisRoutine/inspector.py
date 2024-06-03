@@ -131,39 +131,19 @@ class catalog:
                                   histlog=True,
                                   **kwargs):
         '''
-        kind: normal or density
+        kind: scatter or density
         '''
-        kwargs['show'] = False
-        fig, (ax1, ax2) = plt.subplots(
-            1, 2, figsize=(12, 6),
-            sharey='row', sharex='col',
-            gridspec_kw={'width_ratios': [5, 1]})
-        plt.subplots_adjust(bottom=0.15, hspace=0, wspace=0)
-        # fig, ax = plt.subplots()
-        if kind == 'normal':
-            sns.scatterplot(self.df_phases,
-                            x='distance', y='time_residual',
-                            alpha=0.4, s=20, color='black',
-                            ax=ax1)
-        elif kind == 'density':
-            x = self.df_phases['distance'].to_numpy()
-            y = self.df_phases['time_residual'].to_numpy()
-            srp.plot_density_meshgrid(
-                x, y,
-                xlabel='Distance [km]', ylabel='Residual Time [s]',
-                xstep=xstep, ystep=ystep,
-                ax=ax1, fig=fig, **kwargs)
-        srp.histogram(arr=self.df_phases['time_residual'].to_numpy(),
-                      step=ystep, log=histlog,
-                      ax=ax2, fig=fig, **kwargs)
-        ylim = kwargs.get('ylim')
-        if ylim:
-            ax2.set_ylim(*ylim)
-            kwargs.pop('ylim')
-        kwargs['show'] = True
-        srp._finalise_figure(fig=fig, **kwargs)
-        # ax.set_xlabel('Distance [km]')
-        # ax.set_ylabel('Residual Time [s]')
+        distance = self.df_phases['distance'].to_numpy()
+        residual = self.df_phases['time_residual'].to_numpy()
+        phase = self.df_phases['phase'].to_numpy()
+        srp.density_hist(
+            x=distance, y=residual,
+            xstep=xstep, ystep=ystep,
+            kind=kind, histlog=histlog,
+            xlabel='Distance [km]', ylabel='Residual Time [s]',
+            hue=phase,
+            **kwargs
+        )
 
     def plot_hist_SminusP(self, bins=30, figsize=(7, 4)):
         # Selecting P- and S-type phases
