@@ -6,6 +6,7 @@ import SeisRoutine.core as src
 import numpy as np
 import math
 import inspect
+import seaborn as sns
 
 
 def _get_proper_kwargs(func: object, kwargs: dict):
@@ -49,9 +50,9 @@ def _finalise_figure(fig, **kwargs):
     savefile = kwargs.get("savefile", "figure.png")
     title = kwargs.get("title")
     return_fig = kwargs.get("return_figure", False)
-    size = kwargs.get("size", (10.5, 7.5))
+    figsize = kwargs.get("figsize", (10.5, 7.5))
 
-    fig.set_size_inches(size)
+    fig.set_size_inches(figsize)
 
     if title:
         plt.title(title, fontsize=25)
@@ -108,7 +109,7 @@ def histogram(arr, step=0.5, log=True,
     '''
     Docs ???
     '''
-    bins_min = math.ceil(min(arr))
+    bins_min = 0
     while bins_min > min(arr):
         bins_min -= step
     bins_max = math.ceil(max(arr)) + step
@@ -125,3 +126,43 @@ def histogram(arr, step=0.5, log=True,
         func=_finalise_ax, kwargs=kwargs)
     _finalise_ax(ax, **kw)
     _finalise_figure(fig, **kwargs)
+
+
+def density_hist(x: np.array, y: np.array,
+                 xstep: float, ystep: float,
+                 kind: str='density', histlog: bool=True,
+                 **kwargs):
+    #
+    fig, (ax1, ax2) = plt.subplots(
+        1, 2,
+        figsize=(12, 6),
+        sharey='row',# sharex='col',
+        gridspec_kw={'width_ratios': [5, 1]})
+    plt.subplots_adjust(bottom=0.15, hspace=0, wspace=0)
+    #
+    if kind == 'scatter':
+        kw = _get_proper_kwargs(func=sns.scatterplot,
+                                kwargs=kwargs)
+        sns.scatterplot(
+            x=x, y=y,
+            alpha=0.4, s=20, color='black',
+            ax=ax1, **kw
+        )
+    elif kind == 'density':
+        plot_density_meshgrid(
+            x, y,
+            xstep=xstep, ystep=ystep,
+            ax=ax1, fig=fig, show=False,
+            **kwargs
+        )
+    kw = _get_proper_kwargs(func=_finalise_ax, kwargs=kwargs)
+    _finalise_ax(ax1, **kw)
+    #
+    _ = kwargs.pop('ylabel', None)
+    kwargs['xlabel'] =  'Abundance'
+    histogram(
+        arr=y,
+        step=ystep, log=histlog,
+        ax=ax2, fig=fig,
+        **kwargs
+    )
