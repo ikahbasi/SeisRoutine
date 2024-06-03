@@ -48,8 +48,8 @@ def _finalise_figure(fig, **kwargs):
         return None
 
 
-def plot_density_meshgrid(x, y,
-                          xstep, ystep,
+def plot_density_meshgrid(x: np.array, y: np.array,
+                          xstep: float, ystep: float,
                           xlabel='Distance [km]',
                           ylabel='Time Difference',
                           ax=None, fig=None,
@@ -70,13 +70,14 @@ def plot_density_meshgrid(x, y,
     im = ax.pcolormesh(xcenters, ycenters, z,
                        cmap=pqlx,
                        shading='gouraud', norm=norm, **kw)
-    if show_cmap:
-        cbaxes = inset_axes(ax, width="20%", height="2%", loc=1,
-                            bbox_to_anchor=(-0.02, 0., 1, 1),
-                            bbox_transform=ax.transAxes,)
-        cbar = fig.colorbar(im, cax=cbaxes, orientation='horizontal')
-        cbaxes.xaxis.set_ticks_position("bottom")
-        cbar.ax.set_xlabel('Counts')
+    # Show the colorbar
+    cbaxes = ax.inset_axes(
+        bounds=[0.8, 0.94, 0.15, 0.03],
+        transform=ax.transAxes
+        )
+    cbar = fig.colorbar(im, cax=cbaxes, orientation='horizontal')
+    cbaxes.xaxis.set_ticks_position("bottom")
+    cbar.ax.set_xlabel('Counts')
     #
     ax.set_xlabel(xlabel)
     ax.set_ylabel(ylabel)
