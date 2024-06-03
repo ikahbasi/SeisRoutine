@@ -53,7 +53,7 @@ def plot_density_meshgrid(x: np.array, y: np.array,
                           xlabel='Distance [km]',
                           ylabel='Time Difference',
                           ax=None, fig=None,
-                          show_cmap=True, norm='log',
+                          norm='log',
                           **kwargs):
     '''
     Doc ???
