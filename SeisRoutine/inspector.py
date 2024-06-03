@@ -4,7 +4,7 @@ import seaborn as sns
 import numpy as np
 from obspy.imaging.cm import pqlx
 import SeisRoutine.plot as srp
-
+import SeisRoutine.core as src
 
 def select_pick_of_arrival(arrival, picks):
     '''
@@ -113,12 +113,23 @@ class catalog:
             plt.tight_layout()
             plt.show()
 
-    def plot_traveltime(self):
-        _, ax = plt.subplots()
-        sns.scatterplot(self.df_phases,
-                        x='distance', y='traveltime', s=10, hue='phase')
-        ax.set_xlabel('Distance [km]')
-        ax.set_ylabel('Travel Time [sec]')
+    def plot_traveltime(self, ax=None, **kwargs):
+        '''
+        docstring ???
+        '''
+        if ax is None:
+            fig, ax = plt.subplots()
+        #
+        sns.scatterplot(
+            self.df_phases, x='distance', y='traveltime',
+            s=10, hue='phase', ax=ax
+        )
+        srp._finalise_ax(
+            ax,
+            xlabel='Distance [km]', ylabel='Travel Time [sec]',
+            **kwargs
+        )
+        srp._finalise_figure(ax.figure, **kwargs)
 
     def plot_bar_phasetype(self):
         counts = self.df_phases['phase'].value_counts()
@@ -145,7 +156,8 @@ class catalog:
             **kwargs
         )
 
-    def plot_hist_SminusP(self, bins=30, figsize=(7, 4)):
+    def plot_hist_SminusP(self, bins=30, ax=None,
+                          **kwargs):
         # Selecting P- and S-type phases
         msk_p = self.df_phases['phase'].str.upper().str.startswith('P')
         msk_s = self.df_phases['phase'].str.upper().str.startswith('S')
@@ -164,50 +176,91 @@ class catalog:
         print(f'Number of all phases: {self.df_phases.shape[0]}')
         print(f'Number of P-type phases: {df_p.shape[0]}')
         print(f'Number of S-type phases: {df_s.shape[0]}')
-        ax = sp_interval.hist(edgecolor='k', bins=bins, figsize=figsize)
-        ax.set_xlabel('S Minus P Time [sec]')
-        ax.set_ylabel('Abundance [count]')
+        ax = sp_interval.hist(edgecolor='k', bins=bins, ax=ax)
+        srp._finalise_ax(
+            ax,
+            xlabel='S Minus P Time [sec]', ylabel='Abundance [count]', **kwargs
+        )
+        srp._finalise_figure(ax.figure, **kwargs)
 
-    def plot_phase_mag_dist(self, lst_stations=None):
+
+    def plot_phase_mag_dist(
+            self, dist_step=10, mag_step=0.5,
+            lst_stations=None, ax=None, **kwargs):
+        '''
+        docstring ???
+        '''
+        if ax is None:
+            fig, ax = plt.subplots()
+        #
         df = self.df_phases[['magnitude', 'distance', 'station']]
         if lst_stations:
             lst_stations = '|'.join(lst_stations)
             df = df[df['station'].str.contains(lst_stations, case=False)]
+        #
         msk = df.isna().sum(axis=1)
-        msk = msk == 0
+        msk = (msk==0)
         mag = df['magnitude'][msk]
         dist = df['distance'][msk]
         #
-        fig, ax0 = plt.subplots()
-        hight, xedges, yedges = np.histogram2d(dist, mag,
-                                               bins=(40, 20), density=False)
-        xcenters = (xedges[:-1] + xedges[1:]) / 2
-        ycenters = (yedges[:-1] + yedges[1:]) / 2
-        z = hight.T
-        # z[z==0] = None
-        im = ax0.pcolormesh(xcenters, ycenters, z,
-                            cmap=pqlx, shading='auto', norm='log')
-        fig.colorbar(im, ax=ax0)
-        # plt.xlim(right=1600)
-        plt.xlabel('Distance [km]')
-        plt.ylabel('Magnitude')
-        ax0.set_title('Phases distribution\n'
-                      'according to magnitude and distance')
+        xcenters, ycenters, z = src.density_meshgrid(
+            x=dist, y=mag,
+            xstep=dist_step, ystep=mag_step,
+            zreplace=0.9
+        )
+        im = ax.pcolormesh(
+            xcenters, ycenters, z,
+            cmap=pqlx, shading='auto', norm='log'
+        )
+        fig.colorbar(im, ax=ax)
+        #
+        title = ('Phases distribution\n'
+                 'according to magnitude and distance')
+        srp._finalise_ax(
+            ax,
+            xlabel='Distance [km]', ylabel='Magnitude', **kwargs
+        )
+        srp._finalise_figure(ax.figure, title=title, **kwargs)
 
-    def plot_station_participation(self, station_coords,
-                                   map_focus='total', map_margin=0.05):
+
+    def plot_station_participation(
+            self, station_coords, ax=None,
+            map_focus='total', map_margin=0.05, **kwargs):
+        '''
+        docstring ???
+        '''
+        if ax is None:
+            fig, ax = plt.subplots()
+        ax.set_aspect('equal')
+        #
         phase_counts = self.df_phases['station'].value_counts()
         df = pd.merge(phase_counts, station_coords,
                       how='inner', on=['station'])
-        _, ax = plt.subplots()
-        ax.set_aspect('equal')
-        sns.scatterplot(self.df_events,
-                        x='longitude', y='latitude',
-                        alpha=0.2, s=20, color='black', ax=ax)
-        df.plot.scatter(x='longitude', y='latitude',
-                        c='count', colormap='viridis',
-                        edgecolors='r', linewidth=0.5,
-                        marker='v', s=50, ax=ax)
+        sns.scatterplot(
+            self.df_events,
+            x='longitude', y='latitude', size='magnitude',
+            alpha=0.2, s=20, color='black', ax=ax
+        )
+        # sns.scatterplot(
+        #     df,
+        #     x='longitude', y='latitude',
+        #     hue='count', colormap='viridis',
+        #     edgecolors='r', linewidth=0.5,
+        #     marker='v', s=50, ax=ax)
+        # df.plot.scatter(x='longitude', y='latitude',
+        #                 c='count', colormap='viridis',
+        #                 edgecolors='r', linewidth=0.5,
+        #                 marker='v', s=50, ax=ax)
+        #
+        from mpl_toolkits.axes_grid1 import make_axes_locatable
+        x = df['longitude'].to_numpy()
+        y = df['latitude'].to_numpy()
+        c = df['count'].to_numpy()
+        points = ax.scatter(x, y, c=c, marker='v', s=50, cmap="plasma")
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.05)
+        fig.colorbar(points, cax=cax)
+        #
         station_coords[['longitude', 'latitude', 'station']].apply(
             lambda x: ax.text(*x), axis=1)
         if map_focus == 'stations':
@@ -217,6 +270,11 @@ class catalog:
                     station_coords['latitude'].max() + map_margin]
             plt.xlim(lons)
             plt.ylim(lats)
+        srp._finalise_ax(
+            ax,
+            xlabel='Longitude', ylabel='Latitude', **kwargs
+        )
+        srp._finalise_figure(ax.figure, **kwargs)
 
     def plot_seismicity_phases(self):
         '''
