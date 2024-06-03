@@ -5,7 +5,7 @@ from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import SeisRoutine.core as src
 import numpy as np
 import math
-
+import inspect
 
 def _finalise_figure(fig, **kwargs):
     """
@@ -63,9 +63,13 @@ def plot_density_meshgrid(x, y,
     ###
     if ax is None:
         fig, ax = plt.subplots()
+    # Get a proper kwargs for the plt.pcolormesh function.
+    sig = inspect.signature(plt.pcolormesh)
+    kw = {k: v for k, v in kwargs.items()
+          if k in sig.parameters.keys()}
     im = ax.pcolormesh(xcenters, ycenters, z,
                        cmap=pqlx,
-                       shading='gouraud', norm=norm)
+                       shading='gouraud', norm=norm, **kw)
     if show_cmap:
         cbaxes = inset_axes(ax, width="20%", height="2%", loc=1,
                             bbox_to_anchor=(-0.02, 0., 1, 1),
