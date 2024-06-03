@@ -7,6 +7,32 @@ import numpy as np
 import math
 import inspect
 
+
+
+def _finalise_ax(ax,
+                 xlabel: str=None, ylabel: str=None,
+                 xlim: list=None, ylim: list=None,
+                 labelsize: int=10, linewidth: int=2,
+                 grid: bool=False):
+    """
+    Internal function to wrap up an ax.
+    {plotting_kwargs}
+    """
+    ax.set_xlim(xlim)
+    ax.set_ylim(ylim)
+    #
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    #
+    ax.xaxis.set_tick_params(labelsize=labelsize)
+    ax.yaxis.set_tick_params(labelsize=labelsize)
+    for axis in ['top', 'bottom', 'left', 'right']:
+        ax.spines[axis].set_linewidth(linewidth)
+    if grid:
+        ax.grid()
+
+
+
 def _finalise_figure(fig, **kwargs):
     """
     Internal function to wrap up a figure.
@@ -16,24 +42,13 @@ def _finalise_figure(fig, **kwargs):
     save = kwargs.get("save", False)
     savefile = kwargs.get("savefile", "figure.png")
     title = kwargs.get("title")
-    xlim = kwargs.get("xlim")
-    ylim = kwargs.get("ylim")
     return_fig = kwargs.get("return_figure", False)
     size = kwargs.get("size", (10.5, 7.5))
 
     fig.set_size_inches(size)
-    for ax in fig.axes:
-        ax.xaxis.set_tick_params(labelsize=15)
-        ax.yaxis.set_tick_params(labelsize=15)
-        for axis in ['top', 'bottom', 'left', 'right']:
-            ax.spines[axis].set_linewidth(2)
 
     if title:
         plt.title(title, fontsize=25)
-    if xlim:
-        plt.xlim(xlim)
-    if ylim:
-        plt.ylim(ylim)
     if save:
         path = os.path.dirname(savefile)
         if path:
@@ -50,10 +65,7 @@ def _finalise_figure(fig, **kwargs):
 
 def plot_density_meshgrid(x: np.array, y: np.array,
                           xstep: float, ystep: float,
-                          xlabel='Distance [km]',
-                          ylabel='Time Difference',
                           ax=None, fig=None,
-                          norm='log',
                           **kwargs):
     '''
     Doc ???
@@ -69,7 +81,10 @@ def plot_density_meshgrid(x: np.array, y: np.array,
           if k in sig.parameters.keys()}
     im = ax.pcolormesh(xcenters, ycenters, z,
                        cmap=pqlx,
-                       shading='gouraud', norm=norm, **kw)
+                       shading='gouraud', **kw)
+    #
+    # xlim = kwargs.pop('xlim', None)
+    # ax.set_xlim(xlim)
     # Show the colorbar
     cbaxes = ax.inset_axes(
         bounds=[0.8, 0.94, 0.15, 0.03],
@@ -79,9 +94,12 @@ def plot_density_meshgrid(x: np.array, y: np.array,
     cbaxes.xaxis.set_ticks_position("bottom")
     cbar.ax.set_xlabel('Counts')
     #
-    ax.set_xlabel(xlabel)
-    ax.set_ylabel(ylabel)
-    ax.grid()
+    sig = inspect.signature(_finalise_ax)
+    kw = {k: v for k, v in kwargs.items()
+          if k in sig.parameters.keys()}
+    print(kw)
+    _finalise_ax(ax, **kw)
+    #
     _finalise_figure(fig, **kwargs)
 
 
@@ -102,4 +120,5 @@ def histogram(arr, step=0.5, log=True,
     ax.hist(arr, bins=bins,
             alpha=1, edgecolor='k', facecolor='g',
             orientation='horizontal', log=log)
+    _finalise_ax(ax, **kwargs)
     _finalise_figure(fig, **kwargs)
