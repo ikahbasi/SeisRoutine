@@ -1,4 +1,30 @@
 import numpy as np
+import latlon as ll
+
+
+def dm2dd(coord_str: str):
+    '''
+    convert coordinate: Degree-Minute ---> Decimal-Degree
+                        2245.45N      ---> 22.7575
+    The Degree-Minute format used by HYPO71 and Seisan
+    in STATION0.HYP file.
+    '''
+    #Parsing the components of a coordinate string.
+    degree = coord_str[0: 2]
+    minute = coord_str[2: -1]
+    hemisphere = coord_str[-1]
+    # Reformat the string of the input coordinate.
+    coord_str = f'{degree} {minute} {hemisphere}'
+    #
+    if hemisphere in ['E', 'W']:
+        coord_class = ll.Longitude
+    elif hemisphere in ['N', 'S']:
+        coord_class = ll.Latitude
+    else:
+        raise ValueError('Hemisphere identifier N, S, E or W')
+    #
+    coord = ll.string2geocoord(coord_str, coord_class, 'd% %M% %H')
+    return coord.decimal_degree
 
 
 def density_meshgrid(x, y, xstep, ystep, zreplace=0.9):
