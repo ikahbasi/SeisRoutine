@@ -1,6 +1,24 @@
 import numpy as np
 import latlon as ll
 
+def making_latlon(coord_str: str='5 52 59.88 N',
+                    format: str='d% %m% %S% %H'):
+    '''
+    convert coordinate: Degrees°minutes'seconds" ---> Decimal.degrees
+                        22°45'45                 ---> 22.7625
+    '''
+    hemisphere = coord_str[-1]
+    #
+    if hemisphere in ['E', 'W']:
+        coord_class = ll.Longitude
+    elif hemisphere in ['N', 'S']:
+        coord_class = ll.Latitude
+    else:
+        raise ValueError('Hemisphere identifier N, S, E or W')
+    #
+    coord = ll.string2geocoord(coord_str, coord_class, format)
+    return coord
+
 
 def dm2dd(coord_str: str):
     '''
