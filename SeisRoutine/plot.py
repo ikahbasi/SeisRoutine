@@ -177,3 +177,23 @@ def density_hist(x: np.array, y: np.array,
     )
     kwargs.update(file_management)
     _finalise_figure(ax1.figure, **kwargs)
+
+
+def tag_on_trace(ax, phases: dict, colors: dict):
+    ymin, ymax = ax.get_ylim()
+    for key, val in phases.items():
+        color = colors.get(key, 'black')
+        ax.vlines(
+            x=val,
+            ymin=ymin, ymax=ymax,
+            label=key,
+            color=color,
+        )
+
+
+def tag_on_stream(st, phases: dict, colors: dict):
+    fig = st.plot(handle=True)
+    for ax in fig.axes:
+        tag_on_trace(ax, phases, colors)
+    plt.legend(loc=4)
+    plt.show()
