@@ -1,3 +1,4 @@
+from obspy import read
 from obspy import Stream
 import glob
 
