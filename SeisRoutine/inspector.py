@@ -5,6 +5,7 @@ import numpy as np
 from obspy.imaging.cm import pqlx
 import SeisRoutine.plot as srp
 import SeisRoutine.core as src
+import scipy as sp
 
 def select_pick_of_arrival(arrival, picks):
     '''
@@ -275,6 +276,56 @@ class catalog:
             xlabel='Longitude', ylabel='Latitude', **kwargs
         )
         srp._finalise_figure(ax.figure, **kwargs)
+
+    def plot_statistical_station_participation_and_time_residuals(self, **kwargs):
+        df_selection = self.df_phases.sort_values(by=['station'])
+        #
+        x = df_selection['station'].values
+        y = df_selection['time_residual']
+        #
+        phase = df_selection['phase_hint'].apply(lambda x: x[0]).values
+        xp = x[phase=='P']
+        yp = y[phase=='P']
+        xs = x[phase=='S']
+        ys = y[phase=='S']
+        #
+        dfg = df_selection.groupby(['station'])['time_residual']
+        mode = dfg.apply(lambda x: sp.stats.mode(x)[0])
+        counts = dfg.count()
+        mean = dfg.mean()
+        std = dfg.std()
+        #
+        fig, (ax0, ax1) = plt.subplots(2, 1, figsize=(15, 6), sharex=True, height_ratios=[1.5, 4])
+        #
+        bars = ax0.bar(counts.index, counts.values, align='center', log=False)
+        ax0.set_ylim(top=counts.values.max()*1.15)
+        ax0.bar_label(bars, size=8)
+        m = dfg.count().values.max()
+        m = round(m, -len(str(m))+1)
+        ax0.set_yticks([m, m//2])
+        ax0.set_ylabel('N-Phases')
+        #
+        kw = {'facecolors': 'none', 'marker': '.', 'alpha': 0.7, 's': 150}
+        ax1.scatter(xp, yp, edgecolors='r', label='P-phase', **kw)
+        ax1.scatter(xs, ys, edgecolors='b', label='S-phase', **kw)
+        ax1.plot(mode.index, mode.values, 'k-.', label='Mode')
+        ax1.plot(mean.index, mean.values, 'g', label='Mean')
+        ax1.fill_between(
+            mean.index,
+            mean.values - std.values,
+            mean.values + std.values,
+            alpha=0.2, label='STD'
+            )
+        ax1.set_ylabel('Time Residuals [s]')
+        ax1.legend(loc=3, ncol=5)
+        ax1.set_ylim([-1, 1])
+        ax1.grid()
+        #
+        plt.subplots_adjust(bottom=0.15, hspace=0)
+        plt.xlabel('Station Name')
+        plt.xticks(rotation=60)
+        #
+        srp._finalise_figure(fig, **kwargs)
 
     def plot_seismicity_phases(self):
         '''
