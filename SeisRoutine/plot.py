@@ -179,21 +179,32 @@ def density_hist(x: np.array, y: np.array,
     _finalise_figure(ax1.figure, **kwargs)
 
 
-def tag_on_trace(ax, phases: dict, colors: dict):
+def picks_on_ax_of_trace(ax, picks, linestyles, color):
+    '''
+    DOcs {}
+    '''
     ymin, ymax = ax.get_ylim()
-    for key, val in phases.items():
-        color = colors.get(key, 'black')
+    for key, val in picks.items():
         ax.vlines(
             x=val,
             ymin=ymin, ymax=ymax,
             label=key,
             color=color,
+            linestyles=linestyles.get(key, '-.')
         )
 
-
-def tag_on_stream(st, phases: dict, colors: dict):
+def picks_on_station_stream(st, picks, linestyles, colors, **kwargs):
+    '''
+    DOcs {}
+    '''
+    st.normalize()
     fig = st.plot(handle=True)
     for ax in fig.axes:
-        tag_on_trace(ax, phases, colors)
-    plt.legend(loc=4)
-    plt.show()
+        for pick_type in ['P', 'S']:
+            picks_on_ax_of_trace(
+                ax,
+                picks=picks[pick_type],
+                linestyles=linestyles,
+                color=colors[pick_type]
+            )
+    _finalise_figure(fig, **kwargs)
