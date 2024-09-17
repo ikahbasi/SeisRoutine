@@ -32,7 +32,7 @@ def make_autopct(values):
     return my_autopct
 
 
-class catalog:
+class inspector:
     '''
     Docstring
     '''

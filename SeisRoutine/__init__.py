@@ -1,1 +1,1 @@
-from SeisRoutine import inspector, core, plot
+from SeisRoutine import catalog, core, plot, waveform
