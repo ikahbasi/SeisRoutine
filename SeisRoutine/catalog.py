@@ -327,11 +327,13 @@ class inspector:
         #
         srp._finalise_figure(fig, **kwargs)
 
-    def plot_seismicity_phases(self, bins=10):
+    def plot_seismicity_phases(self, target_phase='P', bins=10):
         '''
         It must perform on each type of P and S seperatly ???
         '''
-        gb = self.df_phases.sort_values(
+        msk = self.df_phases['phase_hint'].apply(lambda x: x.upper()[0] == target_phase)
+        df_phases = self.df_phases[msk]
+        gb = df_phases.sort_values(
             by=['time']).groupby(by=['network', 'station'])
         gb = gb['time'].apply(lambda x: x.diff())
         ax = gb.plot.hist(alpha=1, edgecolor='k', facecolor='g', bins=bins)
