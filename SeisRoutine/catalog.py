@@ -341,7 +341,9 @@ class inspector:
 
     def plot_seismicity_events(self):
         dt = self.df_events['otime'].apply(lambda x: x.datetime)
-        dt.hist(alpha=1, edgecolor='k', facecolor='g', grid=False)
+        dt = dt.groupby(dt.dt.date).count()
+        dt.plot(kind='bar', edgecolor='k', facecolor='g', grid=False)
+        # dt.hist(alpha=1, edgecolor='k', facecolor='g', grid=False)
         plt.xticks(rotation=90)
 
     def __str__(self):
