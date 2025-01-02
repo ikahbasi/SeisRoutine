@@ -6,6 +6,8 @@ from obspy.imaging.cm import pqlx
 import SeisRoutine.plot as srp
 import SeisRoutine.core as src
 import scipy as sp
+from obspy.core.event import Catalog
+
 
 def select_pick_of_arrival(arrival, picks):
     '''
@@ -40,6 +42,15 @@ class inspector:
         self.df_phases = None
         self.catalog = cat
         self.__make_df()
+        self.classified_catalog = None
+        self.quality_citeria_list = {
+            'Hypoellipse & NLLOC': {
+                1: {"stations": [3, 999], "gap": [0, 270], "rms": [0, 0.5], "errorH": [0, 3.0], "errorZ": [0, 3.0], 'evaluation': 'manual', 'label': 'A'},
+                2: {"stations": [3, 999], "gap": [0, 270], "rms": [0, 0.5], "errorH": [0, 5.0], "errorZ": [0, 5.0], 'evaluation': 'manual', 'label': 'B'},
+                3: {"stations": [3, 999], "gap": [0, 360], "rms": [0, 0.5], "errorH": [0, 5.0], "errorZ": [0, 5.0], 'evaluation': 'manual', 'label': 'C'},
+                4: {"stations": [3, 999], "gap": [0, 360], "rms": [0, 9.9], "errorH": [0, 999], "errorZ": [0, 999], 'evaluation': 'manual', 'label': 'D'},
+                }
+            }
 
     def __make_df(self):
         ######################### Events #########################
@@ -85,7 +96,55 @@ class inspector:
         # Convert distance from degree to kilometre.
         self.df_phases['distance'] = self.df_phases.apply(
             lambda row: row.distance * 111, axis=1)
+    
+    def quality_classification(self, citeria='Hypoellipse & NLLOC'):
+        if isinstance(citeria, str):
+            citeria = self.quality_citeria_list[citeria]
+        #
+        classified_catalog = {val['label']: Catalog() for key, val in citeria.items()}
+        classified_catalog['Not Classified'] = Catalog()
+        #
+        for ev in self.catalog:
+            origin = ev.preferred_origin()
+            stations = origin.quality.used_station_count
+            # stations = len({pick.waveform_id.station_code for pick in ev.picks})
+            gap = origin.quality.azimuthal_gap
+            rms = origin.quality.standard_error
+            # rms = np.array([arrival.time_residual for arrival in origin.arrivals if arrival.time_residual is not None])
+            # rms = np.sqrt(np.mean(rms ** 2))
+            errorH = origin.origin_uncertainty.horizontal_uncertainty / 1000
+            errorZ = origin.depth_errors['uncertainty'] / 1000
+            evaluation = origin.evaluation_mode
+            #
+            classified = False
+            for key, params in citeria.items():
+                if (params['stations'][0] < stations < params['stations'][1]) and \
+                    (params['gap'][0] < gap < params['gap'][1]) and \
+                    (params['rms'][0] < rms < params['rms'][1]) and \
+                    (params['errorH'][0] < errorH < params['errorH'][1]) and \
+                    (params['errorZ'][0] < errorZ < params['errorZ'][1]) and \
+                    (params['evaluation'] ==  evaluation):
+                    classified_catalog[params['label']] += ev
+                    classified = True
+            if not classified:
+                classified_catalog['Not Classified'] += ev
+        self.classified_catalog = classified_catalog
+
+    def plot_quality_classification(self):
+        n = self.catalog.count()
+        precent = {}
+        for key, val in self.classified_catalog.items():
+            precent[key] = round(val.count() / n * 100, 2)
         
+        fig, ax = plt.subplots()
+        ax.bar(list(precent.keys()), list(precent.values()),
+               align='center', edgecolor='k')
+        for p in ax.patches:
+            txt = str(p.get_height())
+            xy = (p.get_x() + 0.2,
+                p.get_height() + 1)
+            ax.annotate(txt, xy)
+        plt.show()
 
     def plot_hist_of_numeric(self, **kwargs):
         self.df_phases.hist(**kwargs)
