@@ -108,6 +108,8 @@ class inspector:
             origin = ev.preferred_origin()
             try:
                 stations = origin.quality.used_station_count
+                if stations == 0:
+                    continue
             except Exception as error:
                 print('Skipping form an event. Be careful!', error, origin,
                       sep='\n')
