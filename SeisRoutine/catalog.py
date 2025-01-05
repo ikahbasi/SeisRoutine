@@ -146,13 +146,15 @@ class inspector:
             precent[key] = round(val.count() / n * 100, 2)
         
         fig, ax = plt.subplots()
-        ax.bar(list(precent.keys()), list(precent.values()),
+        x = list(precent.keys())
+        y = list(precent.values())
+        ax.bar(x, y,
                align='center', edgecolor='k')
         for p in ax.patches:
             txt = str(p.get_height())
-            xy = (p.get_x() + 0.2,
-                p.get_height() + 1)
-            ax.annotate(txt, xy)
+            xy = (p.get_x() + 0.5,
+                  p.get_height()  + min(y) * 0.1)
+            ax.annotate(text=txt, xy=xy, ha='center')
         plt.show()
 
     def plot_station_participation_per_event(self):
@@ -183,7 +185,7 @@ class inspector:
         for p in ax.patches:
             txt = str(p.get_height())
             xy = (p.get_x() + 0.5,
-                p.get_height() + 1)
+                  p.get_height() + min(y) * 0.1)
             ax.annotate(text=txt, xy=xy, ha='center')
         plt.show()
 
