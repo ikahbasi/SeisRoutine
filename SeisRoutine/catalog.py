@@ -153,6 +153,38 @@ class inspector:
             ax.annotate(txt, xy)
         plt.show()
 
+    def plot_station_participation_per_event(self):
+        '''
+        Histogram plot.
+        '''
+        from collections import Counter
+        lst = []
+        for ev in self.catalog:
+            origin = ev.preferred_origin()
+            try:
+                nstations = origin.quality.used_station_count
+                lst.append(nstations)
+            except Exception as error:
+                print('Skipping form an event. Be careful!', error, origin,
+                        sep='\n')
+                continue
+        c = Counter(lst)
+        x = list(c.keys())
+        y = list(c.values())
+        fig, ax = plt.subplots()
+        ax.bar(x, y)
+        ax.set_xticks(ticks=x, labels=x)
+        plt.title('How many stations are used for location')
+        plt.xlabel('Number of Stations')
+        plt.ylabel('Number of Events')
+        #
+        for p in ax.patches:
+            txt = str(p.get_height())
+            xy = (p.get_x() + 0.5,
+                p.get_height() + 1)
+            ax.annotate(text=txt, xy=xy, ha='center')
+        plt.show()
+
     def plot_hist_of_numeric(self, **kwargs):
         self.df_phases.hist(**kwargs)
         plt.tight_layout()
