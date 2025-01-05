@@ -106,13 +106,20 @@ class inspector:
         #
         for ev in self.catalog:
             origin = ev.preferred_origin()
-            stations = origin.quality.used_station_count
+            try:
+                stations = origin.quality.used_station_count
+            except Exception as error:
+                print('Skipping form an event. Be careful!', error, origin,
+                      sep='\n')
+                continue
             # stations = len({pick.waveform_id.station_code for pick in ev.picks})
             gap = origin.quality.azimuthal_gap
             rms = origin.quality.standard_error
             # rms = np.array([arrival.time_residual for arrival in origin.arrivals if arrival.time_residual is not None])
             # rms = np.sqrt(np.mean(rms ** 2))
-            errorH = origin.origin_uncertainty.horizontal_uncertainty / 1000
+            errorH = np.sqrt((origin.latitude_errors['uncertainty']*111)**2 +
+                             (origin.longitude_errors['uncertainty']*111)**2)
+            # errorH = origin.origin_uncertainty.horizontal_uncertainty / 1000
             errorZ = origin.depth_errors['uncertainty'] / 1000
             evaluation = origin.evaluation_mode
             #
