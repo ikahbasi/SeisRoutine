@@ -41,7 +41,8 @@ class inspector:
     def __init__(self, cat):
         self.df_phases = None
         self.catalog = cat
-        self.__make_df()
+        self.__make_df_events()
+        self.__make_df_phases()
         self.classified_catalog = None
         self.quality_citeria_list = {
             'Hypoellipse & NLLOC': {
@@ -52,7 +53,7 @@ class inspector:
                 }
             }
 
-    def __make_df(self):
+    def __make_df_events(self):
         ######################### Events #########################
         lst = []
         for ev in self.catalog:
@@ -62,12 +63,36 @@ class inspector:
                 magnitude = None
             else:
                 magnitude = magnitude.mag
+            ###
             d = {'otime': origin.time,
-                    'latitude': origin.latitude,
-                    'longitude': origin.longitude,
-                    'magnitude': magnitude}
+                 'latitude': origin.latitude,
+                 'longitude': origin.longitude,
+                 'depth': origin.depth,
+                 'magnitude': magnitude,
+            }
+            if origin.quality is not None:
+                 d.update({
+                    'num_stations': origin.quality.used_station_count,
+                    #  'stations': len({pick.waveform_id.station_code for pick in ev.picks}),
+                    'azimutal_gap': origin.quality.azimuthal_gap,
+                    'rms': origin.quality.standard_error,
+                    #  'rms': np.sqrt(
+                    #             np.mean(
+                    #                 np.array(
+                    #                     [arrival.time_residual for arrival in origin.arrivals
+                    #                      if arrival.time_residual is not None]) ** 2
+                    #             )),
+                    'errorH': np.sqrt(
+                                    (origin.latitude_errors['uncertainty']*111)**2 +
+                                    (origin.longitude_errors['uncertainty']*111)**2),
+                    #  'errorH': origin.origin_uncertainty.horizontal_uncertainty / 1000,
+                    'errorZ': origin.depth_errors['uncertainty'] / 1000,
+                    'evaluation': origin.evaluation_mode,
+                })
             lst.append(d)
         self.df_events = pd.DataFrame(lst)
+
+    def __make_df_phases(self):
         ######################### Phases #########################
         lst = []
         for ev in self.catalog:
@@ -161,33 +186,12 @@ class inspector:
         '''
         Histogram plot.
         '''
-        from collections import Counter
-        lst = []
-        for ev in self.catalog:
-            origin = ev.preferred_origin()
-            try:
-                nstations = origin.quality.used_station_count
-                lst.append(nstations)
-            except Exception as error:
-                print('Skipping form an event. Be careful!', error, origin,
-                        sep='\n')
-                continue
-        c = Counter(lst)
-        x = list(c.keys())
-        y = list(c.values())
-        fig, ax = plt.subplots()
-        ax.bar(x, y)
-        ax.set_xticks(ticks=x, labels=x)
-        plt.title('How many stations are used for location')
-        plt.xlabel('Number of Stations')
-        plt.ylabel('Number of Events')
-        #
-        for p in ax.patches:
-            txt = str(p.get_height())
-            xy = (p.get_x() + 0.5,
-                  p.get_height() + min(y) * 0.1)
-            ax.annotate(text=txt, xy=xy, ha='center')
-        plt.show()
+        ax = self.df_events['num_stations'].fillna(-1).astype(int)\
+            .value_counts().sort_index().plot(kind='bar', rot=0)
+        _ = ax.bar_label(ax.containers[0])
+        ax.set_title('How many stations are used for location')
+        ax.set_xlabel('Number of Stations')
+        ax.set_ylabel('Number of Events')
 
     def plot_hist_of_numeric(self, **kwargs):
         self.df_phases.hist(**kwargs)
