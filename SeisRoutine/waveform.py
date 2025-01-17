@@ -1,5 +1,8 @@
 import numpy as np
 from obspy import Stream, Trace
+from scipy import signal
+import matplotlib.pyplot as plt
+import plot as seisplot
 
 
 def tr_noise_padding(tr, stime, etime, std_windows=(2, 2)):
@@ -57,3 +60,32 @@ def st_noise_padding(st, stime, etime, std_windows=(2, 2)):
             tr=tr, stime=stime, etime=etime, std_windows=std_windows
         )
     return st_new
+
+
+def Coherence(stream, ref_station_id, plot=False, **kwargs):
+    results = {}
+    #
+    tr_ref = stream.select(id=ref_station_id)[0]
+    sps = tr_ref.stats.sampling_rate
+    #
+    for tr in stream:
+        f, Cxy = signal.coherence(x=tr_ref.data, y=tr.data, fs=sps, nperseg=1024)
+        label = f'{tr.stats.station}.{tr.stats.channel}'
+        if tr.id == ref_station_id:
+            label = f'{label} (ref)'
+        #
+        results[label] = (f, Cxy)
+    if plot:
+        fig, ax = plt.subplots()
+        for label, result in results.items():
+            f, Cxy = result
+            if 'ref' in label:
+                color = 'k'
+            else:
+                color = None
+            ax.semilogy(f, Cxy, label=label, color=color)
+        ax.legend(loc=3)
+        plt.xlabel('Frequency [Hz]')
+        plt.ylabel('Coherence')
+        seisplot._finalise_figure(fig=fig, **kwargs)
+    return results
