@@ -103,3 +103,50 @@ def fft(array, delta, segment=None):
     ampl = scipy.fftpack.fft(array, segment) * delta
     ampl = np.abs(ampl[: npts//2]) / (segment*delta) # time of data = segment * delta
     return freq, ampl
+
+
+class reconstruction:
+    def __init__(self, st):
+        self.st = st
+        self.st_reconstructed = Stream()
+
+    def _sinc_wave(self, frequency, duration, sampling_rate, shift):
+        stime = -duration / 2
+        etime =  duration / 2
+        delta = 1 / sampling_rate
+        times = np.arange(stime, etime, delta)
+        times_shifted = times + shift
+        x = 2 * np.pi * frequency * times_shifted
+        ampls = np.sin(x) / (x)
+        return times, ampls
+
+    def _reconstruction(self, times, data, target_sps):
+        delta = times[1] - times[0]
+        sampling_rate = 1 / delta
+        nyquest_frequency = sampling_rate / 2
+        duration = times[-1] - times[0] + delta
+        #
+        t_reconstructed = np.arange(0, duration, 1/target_sps)
+        a_reconstructed = np.zeros_like(t_reconstructed)
+        for shift, scale in zip(times, data):
+            t_sinc, a_sinc = self._sinc_wave(
+                frequency=nyquest_frequency,
+                duration=duration,
+                sampling_rate=target_sps,
+                shift=(duration/2)-shift
+                )
+            a_reconstructed += a_sinc * scale
+        return t_reconstructed, a_reconstructed
+    
+    def apply(self, target_sps):
+        self.st_reconstructed = Stream()
+        for tr in self.st:
+            times = tr.times()
+            data = tr.data
+            ###
+            t_reconstructed, a_reconstructed = self._reconstruction(times, data, target_sps)
+            stats_reconstructed = tr.stats.copy()
+            stats_reconstructed.npts = a_reconstructed.size
+            stats_reconstructed.delta = t_reconstructed[1] - t_reconstructed[0]
+            tr_reconstructed = Trace(data=a_reconstructed, header=stats_reconstructed)
+            self.st_reconstructed += tr_reconstructed
