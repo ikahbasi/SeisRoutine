@@ -1,4 +1,5 @@
 import numpy as np
+import scipy
 from obspy import Stream, Trace
 from scipy import signal
 import matplotlib.pyplot as plt
@@ -89,3 +90,16 @@ def Coherence(stream, ref_station_id, plot=False, **kwargs):
         plt.ylabel('Coherence')
         seisplot._finalise_figure(fig=fig, **kwargs)
     return results
+
+
+def fft(array, delta):
+    '''
+    array: np.array
+    delta: float
+    '''
+    npts = array.size
+    segment = scipy.fftpack.helper.next_fast_len(npts)
+    freq = np.fft.fftfreq(segment, d=delta)[: npts//2]
+    ampl = scipy.fftpack.fft(array, segment) * delta
+    ampl = np.abs(ampl[: npts//2]) / (segment*delta) # time of data = segment * delta
+    return freq, ampl
