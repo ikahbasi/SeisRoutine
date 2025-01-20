@@ -2,7 +2,7 @@ import numpy as np
 from obspy import Stream, Trace
 from scipy import signal
 import matplotlib.pyplot as plt
-import plot as seisplot
+import SeisRoutine.plot as seisplot
 
 
 def tr_noise_padding(tr, stime, etime, std_windows=(2, 2)):
