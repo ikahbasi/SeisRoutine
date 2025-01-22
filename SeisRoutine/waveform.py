@@ -150,3 +150,21 @@ class reconstruction:
             stats_reconstructed.delta = t_reconstructed[1] - t_reconstructed[0]
             tr_reconstructed = Trace(data=a_reconstructed, header=stats_reconstructed)
             self.st_reconstructed += tr_reconstructed
+
+
+def transform_stream_metadata(
+        st, network_mapper=None, station_mapper=None, location_mapper=None, channel_mapper=None):
+    for tr in st:
+        net = tr.stats.network
+        sta = tr.stats.station
+        loc = tr.stats.location
+        cha = tr.stats.channel
+        if network_mapper:
+            tr.stats.network = network_mapper.get(net, net)
+        if station_mapper:
+            tr.stats.station = station_mapper.get(sta, sta)
+        if location_mapper:
+            tr.stats.location = location_mapper.get(loc, loc)
+        if channel_mapper:
+            tr.stats.channel = channel_mapper.get(cha, cha)
+        print(net, tr.stats.network, sta, tr.stats.station, loc, tr.stats.location, cha, tr.stats.channel)
