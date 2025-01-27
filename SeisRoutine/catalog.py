@@ -23,6 +23,27 @@ def select_pick_of_arrival(arrival, picks):
     return pick
 
 
+def select_arrival_related_to_the_pick(pick, arrivals):
+    '''
+    This function selects the arrival related to the given pick from a list of arrivals.
+
+    Parameters:
+    pick (Pick): The obspy pick object to find the related arrival for.
+    arrivals (list): A list of obspy arrival objects to search through.
+
+    Returns:
+    Arrival: The arrival object related to the given pick, or False if no related arrival is found.
+    '''
+    find_arrival = False
+    for arrival in arrivals:
+        if arrival.pick_id == pick.resource_id:
+            find_arrival = True
+            break
+    if not find_arrival:
+        arrival = False
+    return arrival
+
+
 def make_autopct(values):
     '''
     Docstring
