@@ -1,9 +1,39 @@
 import numpy as np
 import scipy
 from obspy import Stream, Trace
+from obspy import read
 from scipy import signal
 import matplotlib.pyplot as plt
 import SeisRoutine.plot as seisplot
+import logging
+import re
+import os
+
+
+def read_gcf_safely(root: str, pattern: str):
+    '''
+    There is an issue with some .gcf files that causes an error
+    when attempting to read them with ObsPy.
+    
+    pattern: The pattern of the file. It must start with . and end with $.
+    If you want the pattern to include "#", use "#".
+    If you want the pattern to exclude "#", use "[^#]".
+        Example: ".*6226z4.*20241201.*[^#].*\.gcf$"
+    '''
+    st = Stream()
+    pattern = re.compile(pattern)
+    for path, dirs, files in os.walk(root):
+        for fname in files:
+            fpath = os.path.join(path, fname)
+            if pattern.search(fpath):
+                logging.info(f'Loading {fpath}')
+                try:
+                    st += read(fpath)
+                    logging.debug('Data Loaded!')
+                except Exception as error:
+                    logging.warning(f"Couldn't load data file: {fname}")
+                    logging.debug(f"Becuase of the following error:\n{error}")
+    return st
 
 
 def tr_noise_padding(tr, stime, etime, std_windows=(2, 2)):
