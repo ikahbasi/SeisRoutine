@@ -1,6 +1,31 @@
-from obspy import read
-from obspy import Stream
-import glob
+import json
+
+
+def write_to_json_file(data, filename):
+    '''
+    Writes the given data to a JSON file.
+
+    Parameters:
+    data (dict): The data to write to the file.
+    filename (str): The name of the file to write the data to.
+    '''
+    with open(filename, 'w') as json_file:
+        json.dump(data, json_file, indent=4)
+
+
+def read_from_json_file(filename):
+    '''
+    Reads data from a JSON file.
+
+    Parameters:
+    filename (str): The name of the file to read the data from.
+
+    Returns:
+    dict: The data read from the file.
+    '''
+    with open(filename, 'r') as json_file:
+        data = json.load(json_file)
+    return data
 
 
 def clean_nordic_catalog(inp_name, out_name,
