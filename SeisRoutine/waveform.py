@@ -198,3 +198,18 @@ def transform_stream_metadata(
         if channel_mapper:
             tr.stats.channel = channel_mapper.get(cha, cha)
         print(net, tr.stats.network, sta, tr.stats.station, loc, tr.stats.location, cha, tr.stats.channel)
+
+
+def uni_sps(st, sps=None):
+    '''
+    Ensures that all traces in the stream have the same sampling rate.
+
+    Parameters:
+    st (Stream): The stream of traces to check.
+    sps (float, optional): The desired sampling rate. If not provided, the sampling rate of the first trace in the stream is used.
+
+    Raises:
+    AssertionError: If any trace in the stream does not have the same sampling rate as the specified or inferred sampling rate.
+    '''
+    sps = sps or st[0].stats.sampling_rate
+    assert all(tr.stats.sampling_rate==sps for tr in st)
