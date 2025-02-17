@@ -55,6 +55,26 @@ def make_autopct(values):
     return my_autopct
 
 
+def select_picks(picks, station_name, without_amplitued=True):
+    """
+    Filters seismic picks for a specific station.
+
+    Parameters:
+        picks (list): A list of seismic picks.
+        station_name (str): The name of the station to filter picks for.
+        without_amplitued (bool, optional): 
+            - If True (default), removes picks where the phase hint starts with 'AM'.
+            - If False, keeps only picks where the phase hint starts with 'AM'.
+
+    Returns:
+        list: A list of picks that are filtered by station and sorted by time.
+    """
+    cond = lambda p: (p.waveform_id.station_code==station_name) and (p.phase_hint.startswith('AM')!=without_amplitued)
+    picks = list(filter(cond, picks))
+    picks = sorted(picks, key=lambda p: p.time)
+    return picks
+
+
 class inspector:
     '''
     Docstring

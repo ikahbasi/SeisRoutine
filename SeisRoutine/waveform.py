@@ -213,3 +213,9 @@ def uni_sps(st, sps=None):
     '''
     sps = sps or st[0].stats.sampling_rate
     assert all(tr.stats.sampling_rate==sps for tr in st)
+
+
+def preprocessing(st):
+    st.merge(-1)
+    st.detrend('constant')
+    st.merge(fill_value=0)
