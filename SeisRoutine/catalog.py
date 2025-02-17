@@ -75,6 +75,43 @@ def select_picks(picks, station_name, without_amplitued=True):
     return picks
 
 
+def print_phase_frequency(catalog, case_sensitivity=True):
+    """
+    Prints the frequency of different seismic phase hints in a catalog 
+    and counts the number of P-S phase pairs.
+
+    Parameters:
+        catalog (list): A list of seismic events, where each event contains picks.
+        case_sensitivity (bool, optional): 
+            - If True (default), phase hints are treated as case-sensitive.
+            - If False, phase hints are converted to lowercase before counting.
+
+    Returns:
+        None: The function prints the frequency of phase hints and 
+              the total number of P-S phase pairs.
+    """
+    lst = []
+    for ev in catalog:
+        for pick in ev.picks:
+            lst.append(pick.phase_hint)
+    if not case_sensitivity:
+        lst = [el.lower() for el in lst]
+    ###
+    number_of_ps_pairs = 0
+    for event in catalog:
+        stations_in_event = {pick.waveform_id.station_code for pick in event.picks}
+        for station_name in stations_in_event:
+            picks = select_picks(picks=event.picks,
+                                 station_name=station_name)
+            phase_hints = [pick.phase_hint[0].upper() for pick in picks]
+            if ('P' in phase_hints) and ('S' in phase_hints) and (len(phase_hints) >= 2):
+                number_of_ps_pairs += 1
+    ###
+    for el in set(lst):
+        print(el, lst.count(el))
+    print('The Number of P-S Pairs in the Catalog is:', number_of_ps_pairs)
+
+
 class inspector:
     '''
     Docstring
