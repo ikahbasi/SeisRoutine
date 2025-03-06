@@ -186,9 +186,8 @@ def histogram(arr, step=0.5, log=True,
         >>> import matplotlib.pyplot as plt
         >>> data = np.random.normal(0, 1, 1000)
         >>> histogram(data, text_position='bottom_left')
-        >>> plt.show()
     """
-    
+
     if (ax is None) and (fig is None):
         fig, ax = plt.subplots()
     elif fig is None:
@@ -248,7 +247,33 @@ def density_hist(x: np.array, y: np.array,
                  kind: str='density', histlog: bool=True,
                  axes: object=None,
                  **kwargs):
-    #
+    """
+    This function generates a 2D plot, either a density plot or a scatter plot,
+        along with a marginal histogram of the y-data.
+
+    Parameters:
+        x (np.array): The x-coordinates of the data points.
+        y (np.array): The y-coordinates of the data points.
+        xstep (float): The bin width for the density plot or scatter plot's x-axis.
+        ystep (float): The bin width for the density plot or histogram's y-axis.
+        kind (str, optional): The type of 2D plot to create. Can be 'density' or
+            'scatter'. Defaults to 'density'.
+        histlog (bool, optional): Whether to use a logarithmic scale for the y-axis
+            of the marginal histogram. Defaults to True.
+        axes (object, optional): A tuple or list containing two matplotlib Axes objects.
+            If None, new axes are created.
+        **kwargs: Additional keyword arguments to customize the plots. These arguments
+            are passed to the underlying plotting functions
+            (sns.scatterplot, plot_density_meshgrid, histogram, _finalise_ax, _finalise_figure).
+
+    Example:
+        >>> import numpy as np
+        >>> import matplotlib.pyplot as plt
+        >>> x = np.random.normal(0, 1, 1000)
+        >>> y = np.random.normal(0, 1, 1000)
+        >>> density_hist(x, y, xstep=0.1, ystep=0.1, kind='scatter', show=True)
+    """
+
     file_management = {'save': kwargs.get('save', False),
                        'show': kwargs.get('show', False)}
     kwargs.update(save=False, show=False)
@@ -257,10 +282,13 @@ def density_hist(x: np.array, y: np.array,
             1, 2,
             figsize=(12, 6),
             sharey='row',# sharex='col',
-            gridspec_kw={'width_ratios': [5, 1]})
+            gridspec_kw={'width_ratios': [5, 1.2]})
         plt.subplots_adjust(bottom=0.15, hspace=0, wspace=0)
     else:
-        (ax1, ax2) = axes
+        if not isinstance(axes, (list, tuple)) or len(axes) != 2:
+            raise ValueError("axes must be a tuple of two axes objects.")
+        ax1, ax2 = axes
+        fig = ax1.figure
     #
     if kind == 'scatter':
         kw = _get_proper_kwargs(
