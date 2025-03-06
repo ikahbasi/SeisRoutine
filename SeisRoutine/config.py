@@ -32,7 +32,10 @@ def configure_logging(level,
     mode (str): Mode of logging - 'console', 'file', or 'both'.
     filename (str): The filename for logging to a file (if needed).
     """
-    numeric_level = getattr(logging, level.upper(), None)
+    if not isinstance(level, int):
+        numeric_level = getattr(logging, level.upper(), None)
+    else:
+        numeric_level = level
     if not isinstance(numeric_level, int):
         raise ValueError(f'Invalid log level: {level}')
         
