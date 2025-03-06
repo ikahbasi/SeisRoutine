@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from obspy.imaging.cm import pqlx
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import SeisRoutine.core as src
+import SeisRoutine.statistics as srs
 import numpy as np
 import math
 import inspect
@@ -105,12 +106,18 @@ def plot_density_meshgrid(x: np.array, y: np.array,
 
 
 def histogram(arr, step=0.5, log=True,
-              ax=None, fig=None, **kwargs):
+              ax=None, fig=None, orientation='horizontal',
+              show_statistic=True, **kwargs):
     '''
     Docs ???
     '''
-    if ax is None:
+    if (ax is None) and (fig is None):
         fig, ax = plt.subplots()
+    elif fig is None:
+        fig = ax.figure
+    elif ax is None:
+        ax = plt.gca()
+        
     #
     bins_min = 0
     while bins_min > min(arr):
@@ -120,8 +127,28 @@ def histogram(arr, step=0.5, log=True,
     bins = np.arange(bins_min, bins_max, step)
     bins -= step/2
     ax.hist(arr, bins=bins,
-            alpha=1, edgecolor='k', facecolor='g',
-            orientation='horizontal', log=log)
+            alpha=1, edgecolor='k', facecolor='skyblue',
+            orientation=orientation, log=log)
+    #
+    if show_statistic:
+        mean = np.mean(arr)
+        std = np.std(arr)
+        mode = srs.mode(arr)
+        var = np.var(arr)
+        ##
+        vals = [mean, mode, std, var]
+        width = max(len(str(int(_))) for _ in vals) + 6
+        textstr = (
+            r'$\mu$ (Mean) ={:>{width}.2f}' '\n'
+            r'$\mathit{{Mode}}$ ={:>{width}.2f}' '\n'
+            r'$\sigma$ (Std) ={:>{width}.2f}' '\n'
+            r'$\mathit{{Var}}$ ={:>{width}.2f}'.format(mean, mode, std, var,
+                                                       width=width))
+        # Position the text in the top-right corner with proper alignment
+        props = dict(boxstyle='round', facecolor='lightyellow', alpha=0.5)
+        plt.text(0.98, 0.96, textstr,
+                 transform=plt.gca().transAxes, fontsize=10,
+                 verticalalignment='top', horizontalalignment='right', bbox=props)
     #
     kw = _get_proper_kwargs(
         func=_finalise_ax, kwargs=kwargs)
