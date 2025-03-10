@@ -5,6 +5,7 @@ from obspy import read
 from scipy import signal
 import matplotlib.pyplot as plt
 import SeisRoutine.plot as seisplot
+import SeisRoutine.core as src
 import logging
 import re
 import os
@@ -219,3 +220,39 @@ def preprocessing(st):
     st.merge(-1)
     st.detrend('constant')
     st.merge(fill_value=0)
+
+
+def reconstrucion(stream, target_sps, change_name=True):
+    """
+    Reconstruct an ObsPy Stream using sinc interpolation.
+
+    This function reconstructs each Trace within an ObsPy Stream to a new sampling rate
+    using sinc interpolation.
+
+    Parameters:
+        stream (obspy.core.stream.Stream): The input ObsPy Stream object.
+        target_sps (int): The target sampling rate for the reconstructed Traces.
+        change_name (bool, optional): If True, appends '_reconst' to the station name of
+            each Trace. Defaults to True.
+
+    Returns:
+        obspy.core.stream.Stream: The reconstructed ObsPy Stream object.
+    """
+    lst_trace = []
+    for trace in stream:
+        times, data = src.reconstrucion(times=trace.times(),
+                                        amplitudes=trace.data,
+                                        target_sps=target_sps)
+        # Copy the stats from the original Trace and update the stats
+        # with the new number of points and sampling rate.
+        stats = trace.stats.copy()
+        stats.npts = data.size
+        stats.sampling_rate = target_sps
+        if change_name:
+            stats.station += '_reconst'
+        # Create a new Trace object with the reconstructed data and updated stats.
+        trace_reconst = Trace(data=data, header=stats)
+        lst_trace.append(trace_reconst)
+    # Create a new Stream object from the list of reconstructed Traces.
+    stream_reconst = Stream(lst_trace)
+    return stream_reconst
