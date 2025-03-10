@@ -119,3 +119,38 @@ def sinc_wave(times, shift, frequency):
     """
     t = 2 * frequency * (times - shift)
     return np.sinc(t)
+
+
+def reconstrucion(times, amplitudes, target_sps):
+    """
+    Reconstruct a signal using sinc interpolation.
+
+    This function reconstructs a signal from a set of discrete time points and amplitudes
+    to a new set of time points with a specified target sampling rate.
+
+    Parameters:
+        times (np.array): Array of time points for the original signal.
+        amplitudes (np.array): Array of amplitudes corresponding to the original time points.
+        target_sps (int): Target sampling rate for the reconstructed signal.
+
+    Returns:
+        tuple: A tuple containing:
+            - np.array: Array of time points for the reconstructed signal.
+            - np.array: Array of amplitudes for the reconstructed signal.
+    """
+    # Calculate the parameters of the original signal
+    stime = times[0]
+    etime = times[-1]
+    delta = times[1] - times[0]
+    sampling_rate = 1 / delta
+    nyquest_frequency = sampling_rate / 2
+    # Initialize arrays to store time points and amplitudes of the reconstructed signal.
+    times_recunstructed = np.arange(stime, etime, 1/target_sps)
+    amplitudes_reconstructed = np.zeros_like(times_recunstructed)
+    # Loop to compute the reconstructed amplitudes.
+    for shift, scale in zip(times, amplitudes):
+        a_sinc = sinc_wave(frequency=nyquest_frequency,
+                           times=times_recunstructed,
+                           shift=shift)
+        amplitudes_reconstructed += scale * a_sinc
+    return times_recunstructed, amplitudes_reconstructed
