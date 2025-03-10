@@ -103,3 +103,19 @@ def density_meshgrid(x, y, xstep, ystep, zreplace=0.9):
 #     ax.hist(arr, bins=bins,
 #             alpha=1, edgecolor='k', facecolor='g',
 #             orientation='horizontal', log=False)
+
+
+def sinc_wave(times, shift, frequency):
+    """
+    Generate a sinc wave.
+
+    Parameters:
+        times (np.array): Array of time points.
+        shift (int): Time shift of the wave.
+        frequency (int): Frequency of the wave.
+
+    Returns:
+        np.array: Sinc wave values at the given time points.
+    """
+    t = 2 * frequency * (times - shift)
+    return np.sinc(t)
