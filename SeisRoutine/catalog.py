@@ -103,7 +103,7 @@ def print_phase_frequency(catalog, case_sensitivity=True):
         for station_name in stations_in_event:
             picks = select_picks(picks=event.picks,
                                  station_name=station_name)
-            phase_hints = [pick.phase_hint[0].upper() for pick in picks]
+            phase_hints = [pick.phase_hint[0].upper() for pick in picks if pick.phase_hint]
             if ('P' in phase_hints) and ('S' in phase_hints) and (len(phase_hints) >= 2):
                 number_of_ps_pairs += 1
     ###
