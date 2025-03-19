@@ -176,6 +176,28 @@ class inspector:
             }
 
     def __make_df_events(self):
+        """
+        Creates a DataFrame containing event information from the seismic catalog.
+
+        This method iterates over each event in the catalog, extracts relevant information
+        about the event's origin and magnitude, as well as quality metrics. The information
+        is stored in a list of dictionaries and then converted into a pandas DataFrame.
+
+        The resulting DataFrame (`self.df_events`) contains the following columns:
+            - 'otime': Origin time of the seismic event.
+            - 'latitude': Latitude of the seismic event origin.
+            - 'longitude': Longitude of the seismic event origin.
+            - 'depth': Depth of the seismic event origin (in kilometers).
+            - 'magnitude': Magnitude of the seismic event (if available).
+            - 'num_stations': Number of stations used for the event location.
+            - 'azimutal_gap': Azimuthal gap in degrees (range from 0 to 360).
+            - 'rms': Root mean square of the residuals for the event location.
+            - 'errorH': Horizontal uncertainty in kilometers (calculated from latitude and longitude errors).
+            - 'errorZ': Vertical uncertainty in kilometers (calculated from depth errors).
+            - 'evaluation': Evaluation mode of the event (e.g., automatic or manual).
+
+        The method updates the `self.df_events` attribute with the newly created DataFrame.
+        """
         ######################### Events #########################
         lst = []
         for ev in self.catalog:
