@@ -10,9 +10,24 @@ from obspy.core.event import Catalog
 
 
 def select_pick_of_arrival(arrival, picks):
-    '''
-    Docstring
-    '''
+    """
+    Find and return the corresponding pick for a given arrival.
+
+    Parameters:
+        arrival (obspy.core.event.origin.Arrival): 
+            The arrival object containing a reference to a pick.
+        picks (list of obspy.core.event.origin.Pick): 
+            A list of pick objects to search within.
+
+    Returns:
+        obspy.core.event.origin.Pick or bool: 
+            The corresponding pick object if found, otherwise `False`.
+
+    Notes:
+        - The function iterates through the list of picks and matches them 
+          with the `pick_id` of the given `arrival`.
+        - If no matching pick is found, it returns `False`.
+    """
     find_pick = False
     for pick in picks:
         if pick.resource_id == arrival.pick_id:
