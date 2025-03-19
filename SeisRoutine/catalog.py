@@ -60,9 +60,26 @@ def select_arrival_related_to_the_pick(pick, arrivals):
 
 
 def make_autopct(values):
-    '''
-    Docstring
-    '''
+    """
+    Generate a function for displaying percentage and absolute value in a pie chart.
+
+    This function creates a custom autopct function for use in `matplotlib.pyplot.pie`,
+    showing both the percentage and the absolute count of each segment.
+
+    Parameters:
+        values (list or array-like): The dataset values used to calculate absolute counts.
+
+    Returns:
+        function: A formatting function that takes a percentage (`pct`) and returns a string
+                  formatted as '{percentage}% (absolute count)'.
+
+    Example:
+        import matplotlib.pyplot as plt
+
+        sizes = [30, 20, 50]
+        plt.pie(sizes, autopct=make_autopct(sizes))
+        plt.show()
+    """
     def my_autopct(pct):
         total = sum(values)
         val = int(round(pct*total/100.0))
