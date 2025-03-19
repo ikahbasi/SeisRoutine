@@ -145,9 +145,21 @@ def print_phase_frequency(catalog, case_sensitivity=True):
 
 
 class inspector:
-    '''
-    Docstring
-    '''
+    """
+    A class to inspect and analyze seismic event catalogs.
+    
+    Attributes:
+        catalog (obspy.core.event.Catalog):
+            Input seismic event catalog.
+        df_phases (pandas.DataFrame):
+            Dataframe containing phase information.
+        df_events (pandas.DataFrame):
+            Dataframe containing event information.
+        classified_catalog (dict):
+            Dictionary of classified events.
+        quality_citeria_list (dict):
+            Classification criteria for event quality.
+    """
     def __init__(self, cat):
         self.df_phases = None
         self.catalog = cat
