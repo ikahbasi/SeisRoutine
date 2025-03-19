@@ -237,7 +237,29 @@ class inspector:
         self.df_events = pd.DataFrame(lst)
 
     def __make_df_phases(self):
-        ######################### Phases #########################
+        """
+        Creates a DataFrame containing seismic phase information from the seismic catalog.
+
+        This method iterates over each event in the catalog, extracts relevant information 
+        about the event's origin, magnitude, and seismic phase arrivals. For each arrival, 
+        it identifies the associated pick, and stores both phase and arrival information 
+        into a list of dictionaries. Afterward, it converts the list into a pandas DataFrame 
+        and computes additional columns for the station, network, channel, travel time, and 
+        distance.
+
+        The resulting DataFrame (`self.df_phases`) contains the following columns:
+            - 'otime': Origin time of the seismic event.
+            - 'magnitude': Magnitude of the seismic event (if available).
+            - 'waveform_id': Information about the waveform associated with the arrival.
+            - 'station': Station code where the phase was detected.
+            - 'network': Network code associated with the station.
+            - 'channel': Channel code for the seismic measurement.
+            - 'traveltime': Time difference between the arrival time and the origin time (in seconds).
+            - 'distance': Distance from the seismic event's origin to the station (in kilometers).
+            - Plus any additional keys from the arrival items (e.g., phase, arrival time, etc.).
+
+        The method updates the `self.df_phases` attribute with the newly created DataFrame.
+        """
         lst = []
         for ev in self.catalog:
             origin = ev.preferred_origin()
