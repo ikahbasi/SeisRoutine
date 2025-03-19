@@ -331,6 +331,15 @@ class inspector:
         self.classified_catalog = classified_catalog
 
     def plot_quality_classification(self):
+        """
+        Plots a bar chart representing the percentage distribution of classified seismic events.
+
+        This method calculates the percentage of seismic events that fall into each quality class
+        defined in `self.classified_catalog` and plots the distribution as a bar chart. Each bar represents
+        a quality class, and the height of the bar corresponds to the percentage of events in that class.
+
+        The chart also annotates each bar with its exact percentage value for clarity.
+        """
         n = self.catalog.count()
         precent = {}
         for key, val in self.classified_catalog.items():
