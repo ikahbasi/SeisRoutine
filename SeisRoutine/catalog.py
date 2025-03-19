@@ -358,9 +358,13 @@ class inspector:
         plt.show()
 
     def plot_station_participation_per_event(self):
-        '''
-        Histogram plot.
-        '''
+        """
+        Plots a histogram showing the distribution of the number of stations used for event location.
+
+        This method generates a bar chart that illustrates how many stations were used in determining the 
+        location for each seismic event in the catalog. The number of stations for each event is counted, 
+        and the resulting histogram displays how many events used a specific number of stations.
+        """
         ax = self.df_events['num_stations'].fillna(-1).astype(int)\
             .value_counts().sort_index().plot(kind='bar', rot=0)
         _ = ax.bar_label(ax.containers[0])
