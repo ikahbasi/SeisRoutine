@@ -3,17 +3,76 @@ import logging
 
 
 class Config:
+    """
+    A helper class that converts a dictionary (e.g., parsed from a YAML file)
+    into an object with attribute access. Supports nested dictionaries and 
+    includes utilities for converting back to dictionary form and string representation.
+    """
+
     def __init__(self, **entries):
-        for key, value in entries.items():
+        """
+        Initializes the Config object with dictionary entries.
+
+        Args:
+            **entries: Arbitrary keyword arguments representing dictionary keys and values.
+        """
+        self.entries = entries
+        self.dict2object()
+
+    def dict2object(self):
+        """
+        Recursively sets dictionary keys as attributes on the object.
+        Nested dictionaries are converted into nested Config objects.
+        """
+        for key, value in self.entries.items():
             if isinstance(value, dict):
                 value = Config(**value)
             setattr(self, key, value)
+    
+    def to_dict(self):
+        """
+        Recursively converts the Config object back into a dictionary.
+
+        Returns:
+            dict: A dictionary representation of the Config object.
+        """
+        result = {}
+        for key, value in self.__dict__.items():
+            if key == 'entries':
+                continue
+            if isinstance(value, Config):
+                value = value.to_dict()
+            elif isinstance(value, list):
+                value = [v.to_dict() if isinstance(v, Config) else v for v in value]
+            result[key] = value
+        return result
+    
+    def to_yaml(self, **yaml_kwargs):
+        """
+        Converts the Config object to a YAML-formatted string.
+
+        Args:
+            **yaml_kwargs: Additional keyword arguments to pass to yaml.dump.
+
+        Returns:
+            str: A YAML-formatted string.
+        """
+        return yaml.dump(self.to_dict(), **yaml_kwargs)
 
     def __str__(self):
-        text = ''
-        for key, val in self.__dict__.items():
-            text += f'{key}: {val}\n'
-        return text
+        """
+        Returns the Config object as a YAML-formatted string.
+        """
+        return self.to_yaml(default_flow_style=False)
+
+    def __repr__(self):
+        """
+        Returns a developer-friendly representation of the Config object.
+
+        Returns:
+            str: A string representation suitable for debugging.
+        """
+        return f'Config({self.__dict__})'
 
 def load_config(file_path):
     with open(file_path, 'r') as file:
