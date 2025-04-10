@@ -1,6 +1,6 @@
 import yaml
 import logging
-
+import os
 
 class Config:
     """
@@ -80,9 +80,9 @@ def load_config(file_path):
         return Config(**config_dict)
 
 def configure_logging(level,
-                      log_format='%(asctime)s - %(levelname)s - %(message)s',
-                      mode='console',
-                      filename='app.log'):
+                      log_format='%(asctime)s - [%(levelname)s] - %(message)s',
+                      mode='console', colored_console=True,
+                      filename='app.log', filepath='.'):
     """
     Configure logging settings based on mode.
 
@@ -97,24 +97,41 @@ def configure_logging(level,
         numeric_level = level
     if not isinstance(numeric_level, int):
         raise ValueError(f'Invalid log level: {level}')
-        
+
     logger = logging.getLogger()
     logger.setLevel(numeric_level)
     if logger.hasHandlers():
         logger.handlers.clear()
-    
-    if mode == 'console' or mode == 'both':
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(numeric_level)
-        console_handler.setFormatter(logging.Formatter(log_format))
-        logger.addHandler(console_handler)
-    
-    if mode == 'file' or mode == 'both':
+
+    if mode in ('console', 'both'):
+        if colored_console:
+            import coloredlogs
+            coloredlogs.install(level=numeric_level, fmt=log_format, logger=logger,
+                                level_styles={
+                                    'debug': {'color': 'blue'},
+                                    'info': {'color': 'green'},
+                                    'warning': {'color': 'yellow'},
+                                    'error': {'color': 'red'},
+                                    'critical': {'color': 'magenta', 'bold': True},
+                                })
+        else:
+            console_handler = logging.StreamHandler()
+            console_handler.setLevel(numeric_level)
+            console_handler.setFormatter(logging.Formatter(log_format))
+            logger.addHandler(console_handler)
+
+    if mode in ('file', 'both'):
+        if filename == 'now':
+            from datetime import datetime
+            today_str = datetime.today().strftime('%Y-%m-%d_%H-%M-%S')
+            filename = f'{today_str}.log'
+        os.makedirs(filepath, exist_ok=True)
+        filename = os.path.join(filepath, filename)
         file_handler = logging.FileHandler(filename)
         file_handler.setLevel(numeric_level)
         file_handler.setFormatter(logging.Formatter(log_format))
         logger.addHandler(file_handler)
-    
+
     logger.propagate = False
     for name in logging.root.manager.loggerDict.keys():
         if name not in ('my_module', '__main__'):
