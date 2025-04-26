@@ -82,7 +82,7 @@ def load_config(file_path):
 def configure_logging(level,
                       log_format='%(asctime)s - [%(levelname)s] - %(message)s',
                       mode='console', colored_console=True,
-                      filename='app.log', filepath='.'):
+                      filename_prefix='', filename='app.log', filepath='.'):
     """
     Configure logging settings based on mode.
 
@@ -126,6 +126,7 @@ def configure_logging(level,
             today_str = datetime.today().strftime('%Y-%m-%d_%H-%M-%S')
             filename = f'{today_str}.log'
         os.makedirs(filepath, exist_ok=True)
+        filename = f'{filename_prefix}_{filename}'
         filename = os.path.join(filepath, filename)
         file_handler = logging.FileHandler(filename)
         file_handler.setLevel(numeric_level)
