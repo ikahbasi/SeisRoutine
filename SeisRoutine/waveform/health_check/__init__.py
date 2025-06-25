@@ -1,1 +1,1 @@
-from . import spike
+from . import spike, error
