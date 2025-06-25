@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.signal import find_peaks
+import pywt
 import SeisRoutine.utils.statistics as srus
 
 
@@ -159,3 +160,40 @@ def prominence(data, prominence=5):
     """
     peaks, _ = find_peaks(np.abs(data), prominence=prominence)
     return peaks
+
+
+def wavelet(data, wavelet='db4', level=4, coeffs_index=-1, threshold=3.5):
+    """
+    Detects spike-like anomalies in a 1D signal using wavelet decomposition.
+
+    This function decomposes the signal using discrete wavelet transform (DWT), 
+    examines the specified level of detail coefficients, and identifies spikes 
+    as values that exceed a multiple of the standard deviation of those coefficients.
+    Detected spike locations are approximately mapped back to the original signal index space.
+
+    Parameters:
+        data (np.ndarray): 1D input signal array.
+        wavelet (str): Type of wavelet to use for decomposition (default is 'db4').
+        level (int): Number of decomposition levels to perform (default is 4).
+        coeffs_index (int): Index of the detail coefficients to use (e.g., -1 for highest frequency cD1).
+        threshold (float): Number of standard deviations above which a coefficient is considered a spike (default is 3.5).
+
+    Returns:
+        np.ndarray: Array of estimated indices in the original signal corresponding to detected spikes.
+
+    Example:
+        >>> import numpy as np
+        >>> a = np.random.randn(1000)
+        >>> a[149] = 7  # Inject a spike
+        >>> wavelet(a, level=5, coeffs_index=-1, threshold=3.5)
+        array([148])  # Example output (index may vary slightly depending on settings)
+    """
+    coeffs = pywt.wavedec(data, wavelet, level=level)
+    detail = coeffs[coeffs_index]
+    std = np.std(detail)
+    spike_locs = np.where(np.abs(detail) > threshold * std)[0]
+
+    # Approximate mapping back to original signal
+    factor = len(data) / len(detail)
+    approx_indices = np.round(spike_locs * factor).astype(int)
+    return approx_indices
