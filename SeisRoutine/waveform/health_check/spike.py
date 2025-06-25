@@ -73,3 +73,47 @@ def differential(data, threshold=5.0):
     diffs = np.abs(np.diff(data))
     spikes = np.where(diffs > threshold)
     return spikes[0]
+
+
+def mad(data, threshold=6):
+    """
+    Detect spikes in a 1D signal using the Median Absolute Deviation (MAD) method.
+
+    This function identifies spikes by computing a modified z-score based on the 
+    Median Absolute Deviation (MAD), which is a robust measure of variability. 
+    It is particularly effective for detecting outliers in signals that may contain 
+    extreme values or are not normally distributed.
+
+    Parameters
+    ----------
+        data : np.ndarray
+            A 1D NumPy array representing the signal (e.g., a seismic trace).
+        threshold : float, optional
+            The threshold for detecting spikes. Data points with a modified z-score 
+            greater than this value are considered spikes. Default is 6.
+
+    Returns
+    -------
+        np.ndarray
+            Indices of the detected spikes in the input data.
+
+    Notes
+    -----
+        - This method is robust to outliers and works well when the data may have 
+        heavy-tailed distributions.
+
+    Examples
+    --------
+        >>> import numpy as np
+        >>> data = np.random.normal(0, 1, 1000)
+        >>> data[300] = 15  # Introduce a spike
+        >>> spike_detection_mad(data, threshold=6)
+        array([300])
+    """
+    # normalizing MAD to be comparable to the standard deviation under
+    # the assumption of a normal (Gaussian) distribution.
+    normalizing_factor = 0.6745
+    median = np.median(data)
+    mad = np.median(np.abs(data - median))
+    modified_zscore = np.abs(normalizing_factor * (data - median) / (mad + 1e-8))
+    return np.where(modified_zscore > threshold)[0]
