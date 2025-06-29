@@ -42,6 +42,8 @@ def compute_snr(data, pick_idx,
         snr : np.ndarray
             SNR values per channel.
     """
+    if data.ndim == 1:
+        data = np.expand_dims(data, axis=0)
     n_channels, n_samples = data.shape
     s = max(0, pick_idx - noise_window)
     e = pick_idx
