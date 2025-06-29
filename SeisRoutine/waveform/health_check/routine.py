@@ -73,14 +73,14 @@ def _vaiance_check(data, threshold=1e-5, axis=1):
 
 def _inf_check(data, axis=1):
     infs = np.isinf(data)
-    loc_infs = np.where(infs, axis=axis)
+    loc_infs = np.where(infs)
     num_infs = np.sum(infs, axis=axis)
     return num_infs, loc_infs
 
 
 def _nan_check(data, axis=1):
     nans = np.isnan(data)
-    loc_nans = np.where(nans, axis=axis)
+    loc_nans = np.where(nans)
     num_nans = np.sum(nans, axis=axis)
     return num_nans, loc_nans
 
