@@ -1,7 +1,10 @@
-import yaml
+from datetime import datetime
 import logging
 import os
 import sys
+import yaml
+import ipynbname
+import coloredlogs
 
 
 class Config:
@@ -10,7 +13,6 @@ class Config:
     into an object with attribute access. Supports nested dictionaries and 
     includes utilities for converting back to dictionary form and string representation.
     """
-
     def __init__(self, **entries):
         """
         Initializes the Config object with dictionary entries.
@@ -30,7 +32,7 @@ class Config:
             if isinstance(value, dict):
                 value = Config(**value)
             setattr(self, key, value)
-    
+
     def to_dict(self):
         """
         Recursively converts the Config object back into a dictionary.
@@ -48,7 +50,7 @@ class Config:
                 value = [v.to_dict() if isinstance(v, Config) else v for v in value]
             result[key] = value
         return result
-    
+
     def to_yaml(self, **yaml_kwargs):
         """
         Converts the Config object to a YAML-formatted string.
@@ -77,6 +79,9 @@ class Config:
         return f'Config({self.__dict__})'
 
 def load_config(file_path):
+    """
+    Docstring
+    """
     with open(file_path, 'r') as file:
         config_dict = yaml.safe_load(file)
         return Config(**config_dict)
@@ -107,7 +112,6 @@ def configure_logging(level,
 
     if mode in ('console', 'both'):
         if colored_console:
-            import coloredlogs
             coloredlogs.install(level=numeric_level, fmt=log_format, logger=logger,
                                 level_styles={
                                     'debug': {'color': 'blue'},
@@ -124,7 +128,6 @@ def configure_logging(level,
 
     if mode in ('file', 'both'):
         if filename == 'now':
-            from datetime import datetime
             today_str = datetime.today().strftime('%Y-%m-%d_%H-%M-%S')
             filename = f'{today_str}.log'
         os.makedirs(filepath, exist_ok=True)
@@ -164,8 +167,8 @@ def getting_filename_and_path_of_the_running_code():
             _file = globals()['__vsc_ipynb_file__']
             name = os.path.basename(_file)
             path = os.path.dirname(_file)
-        except:
-            import ipynbname
+        except Exception as error:
+            print(error)
             name = ipynbname.name()
             path = ipynbname.path()
     return path, name
