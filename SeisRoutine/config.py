@@ -1,6 +1,8 @@
 import yaml
 import logging
 import os
+import sys
+
 
 class Config:
     """
@@ -137,3 +139,33 @@ def configure_logging(level,
     for name in logging.root.manager.loggerDict.keys():
         if name not in ('my_module', '__main__'):
             logging.getLogger(name).setLevel(logging.WARNING)
+
+
+def getting_filename_and_path_of_the_running_code():
+    """
+    Get the filename and directory path of the currently executing code.
+    
+    This function works for both regular Python scripts (.py files) and Jupyter Notebooks
+    (.ipynb files). For notebooks, it handles both VS Code's environment and standard
+    Jupyter environments.
+
+    Returns:
+        tuple: A tuple containing (directory_path, filename) of the running code.
+        
+    Note:
+        In Jupyter Notebook environments, returns the notebook name and path.
+        In regular Python scripts, returns the script name and path.
+    """
+    _file = sys.argv[0]
+    name = os.path.basename(_file)
+    path = os.path.dirname(_file)
+    if name == "ipykernel_launcher.py":
+        try:
+            _file = globals()['__vsc_ipynb_file__']
+            name = os.path.basename(_file)
+            path = os.path.dirname(_file)
+        except:
+            import ipynbname
+            name = ipynbname.name()
+            path = ipynbname.path()
+    return path, name
