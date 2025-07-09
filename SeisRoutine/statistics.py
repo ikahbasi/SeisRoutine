@@ -96,3 +96,62 @@ def detect_outliers_ztest(array, threshold=3):
     z_scores = zscore(array)
     outliers_msk = np.abs(z_scores) > threshold
     return outliers_msk
+
+
+def compute_distance_weights(array, epsilon=1e-10):
+    """
+    Compute distance weights for Distance-Weighted Averaging (DWA) as per
+    Eq.4 in:
+        https://doi.org/10.1093/gji/ggae049
+
+    The weights are calculated as 1/sum(|x_i - x_j|) for each element x_i.
+
+    Parameters
+    ----------
+        array : np.ndarray
+            Input array of values (1D or 2D). If 1D, will be converted to 2D row
+            vector.
+
+    Returns
+    -------
+        np.ndarray
+            Array of weights with same number of elements as input array.
+
+    Notes
+    -----
+        - For numerical stability, adds small epsilon to denominator
+        - Handles both vector and matrix inputs automatically
+    """
+    array = np.atleast_2d(array)  # Ensure 2D without copying if already 2D
+    if array.shape[0] > 1:
+        raise ValueError("Input must be a single vector (shape: [1, N] or [N])")
+    
+    diffs = np.abs(array - array.T)  # Pairwise differences
+    weights = 1 / (diffs.sum(axis=1) + epsilon)
+    weights = weights.squeeze()  # Return as 1D if input was 1D
+    return weights
+
+
+def distance_weighted_average(array):
+    """
+    Compute Distance-Weighted Average (DWA) as per Eq.3 in:
+    https://doi.org/10.1093/gji/ggae049
+
+    Parameters
+    ----------
+        array : np.ndarray
+            Input array of values (1D or 2D)
+
+    Returns
+    -------
+        float or np.ndarray
+            The weighted average value(s)
+
+    Examples
+    --------
+        >>> distance_weighted_average(np.array([1, 2, 3]))
+        2.0
+    """
+    weights = compute_distance_weights(array)
+    average = np.average(array, weights=weights)
+    return average
