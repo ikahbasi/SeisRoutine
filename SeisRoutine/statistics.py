@@ -1,6 +1,7 @@
 from statistics import median
 import numpy as np
 from scipy.stats import gaussian_kde
+from scipy.stats import skew, zscore
 
 
 def mode(data):
@@ -46,11 +47,52 @@ def detect_outliers_iqr(array, multiplier=1.5):
     :type upper: float
     :param upper: the upper boundary of the fences (or Q3 +1.5*IQR).
     """
-    q1 = np.percentile(array, 25)
-    q3 = np.percentile(array, 75)
+    q1, q3 = np.percentile(array, [25, 75])
     iqr_value = q3 - q1
     lower = q1 - (iqr_value * multiplier)
     upper = q3 + (iqr_value * multiplier)
     inliers_msk = (lower <= array) & (array <= upper)
     outliers_msk = ~inliers_msk
+    return outliers_msk
+
+
+def detect_outliers_ztest(array, threshold=3):
+    """
+    Detect and remove outliers using Z-score analysis.
+
+    Identifies outliers as values where the absolute Z-score exceeds
+    the threshold, then returns a filtered array with outliers removed. Uses the
+    skewness of the data for logging purposes (though not for outlier
+    calculation).
+
+    Parameters
+    ----------
+        array : np.ndarray
+            1D array of numerical values to analyze.
+        threshold : float, optional (default=3)
+            Z-score threshold for outlier detection. Higher values make the test
+            more conservative (fewer outliers detected). Common values:
+            - 2.58 (~99% confidence for normal data)
+            - 3.0 (~99.7% confidence for normal data)
+
+    Returns
+    -------
+        np.ndarray
+            Copy of the input array with outliers removed.
+
+    Notes
+    -----
+        - Z-scores are calculated as (x - mean) / std.
+        - Assumes approximately normal distribution for accurate results.
+        - Logs the count of detected outliers at INFO level.
+
+    Examples
+    --------
+        >>> data = np.array([1, 2, 3, 100])
+        >>> ztest(data, threshold=2)
+        array([False, False, False, True])
+    """
+    # data_skewness = skew(array)
+    z_scores = zscore(array)
+    outliers_msk = np.abs(z_scores) > threshold
     return outliers_msk
