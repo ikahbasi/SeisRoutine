@@ -66,7 +66,7 @@ def _flat_check(data, threshold=1e-6, axis=1):
     return flat
 
 
-def _vaiance_check(data, threshold=1e-5, axis=1):
+def _variance_check(data, threshold=1e-5, axis=1):
     std = np.nanstd(data, axis=axis)
     return std < threshold
 
@@ -131,10 +131,12 @@ def is_waveform_healthy(data, axis=1, max_thr=1e-6, std_thr=1e-5):
     >>> print(conditions['inf'])
     [0 0 1]
     """
+    if data.ndim == 1:
+        data = np.expand_dims(data, axis=0)
     num_nans, loc_nans = _nan_check(data, axis=axis)
     num_infs, loc_infs = _inf_check(data, axis=axis)
     flat = _flat_check(data, threshold=max_thr, axis=axis)
-    var = _vaiance_check(data, threshold=std_thr, axis=axis)
+    var = _variance_check(data, threshold=std_thr, axis=axis)
     ###
     conditions = {'nan': num_nans,
                   'inf': num_infs,
