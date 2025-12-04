@@ -142,6 +142,7 @@ def configure_logging(level,
     for name in logging.root.manager.loggerDict.keys():
         if name not in ('my_module', '__main__'):
             logging.getLogger(name).setLevel(logging.WARNING)
+    print(f"Logging Starts in:\n{filename}")
 
 
 def getting_filename_and_path_of_the_running_code():
