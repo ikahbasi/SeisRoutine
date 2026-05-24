@@ -1,22 +1,35 @@
 import numpy as np
 
 
-def _snr_time(signal, noise, epsilon=1e-8, axis=0):
-    signal_power = np.sqrt(np.mean(signal**2, axis=axis))
-    noise_power = np.sqrt(np.mean(noise**2, axis=axis))
-    noise_power += epsilon # Avoid divide-by-zero
-    snr = signal_power / noise_power
+def compute_power(data,  axis=0, domain='time'):
+    n = data.shape[axis]
+    if domain=='time':
+        p = 1/n    * np.sum(np.abs(data)**2, axis=axis)
+    elif domain=='frequency':
+        p = 1/n**2 * np.sum(np.abs(data)**2, axis=axis)
+    return p
+
+
+def _snr_time(signal, noise, epsilon=1e-8, axis=0, dB=False):
+    p_signal = compute_power(signal, axis=axis, domain='time')
+    p_noise  = compute_power(noise, axis=axis, domain='time')
+    p_noise += epsilon # Avoid divide-by-zero
+    snr = p_signal / p_noise
+    if dB:
+        snr = 10 * np.log10(snr)
     return snr
 
 
-def _snr_freq(signal, noise, epsilon=1e-8, axis=0):
-    noise_fft = np.fft.rfft(noise, axis=axis)
-    signal_fft = np.fft.rfft(signal, axis=axis)
+def _snr_freq(signal, noise, epsilon=1e-8, axis=0, dB=False):
+    noise_fft = np.fft.fft(noise, axis=axis)
+    signal_fft = np.fft.fft(signal, axis=axis)
     # Power (squared magnitude)
-    noise_power = np.mean(np.abs(noise_fft)**2, axis=axis)
-    noise_power += epsilon # Avoid divide-by-zero
-    signal_power = np.mean(np.abs(signal_fft)**2, axis=axis)        
-    snr = signal_power / noise_power
+    p_signal = compute_power(signal_fft,  axis=axis, domain='frequency')
+    p_noise  = compute_power(noise_fft,  axis=axis, domain='frequency')
+    p_noise += epsilon # Avoid divide-by-zero    
+    snr = p_signal / p_noise
+    if dB:
+        snr = 10 * np.log10(snr)
     return snr
 
 
