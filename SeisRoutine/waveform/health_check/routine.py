@@ -35,7 +35,7 @@ def _snr_freq(signal, noise, epsilon=1e-8, axis=0, dB=False):
 
 def compute_snr(data, pick_idx,
                 noise_window=100, signal_window=200,
-                domain='time', axis=1, epsilon=1e-8):
+                domain='time', axis=1, epsilon=1e-8, dB=False):
     """
     Compute the signal-to-noise ratio (SNR) around a pick index.
 
@@ -67,9 +67,9 @@ def compute_snr(data, pick_idx,
     signal = data[:, s: e]
     #
     if domain == 'time':
-        snr = _snr_time(signal, noise, epsilon=epsilon, axis=axis)
+        snr = _snr_time(signal, noise, epsilon=epsilon, axis=axis, dB=dB)
     elif domain == 'frequency':
-        snr = _snr_freq(signal, noise, epsilon=epsilon, axis=axis)
+        snr = _snr_freq(signal, noise, epsilon=epsilon, axis=axis, dB=dB)
     return snr
 
 
