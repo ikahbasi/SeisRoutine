@@ -158,7 +158,7 @@ def plot_density_meshgrid(x: np.array, y: np.array,
 
 
 def histogram(arr, step=0.5, log=True,
-              ax=None, fig=None, orientation='horizontal',
+              ax=None, fig=None, orientation='horizontal', around_zero=False,
               show_statistic=True, text_position=None, **kwargs):
     """
     This function plots a histogram of the input data and provides options to
@@ -200,7 +200,8 @@ def histogram(arr, step=0.5, log=True,
     bins_max = math.ceil(max(arr)) + step
     #
     bins = np.arange(bins_min, bins_max, step)
-    bins -= step/2
+    if around_zero:
+        bins -= step/2
     ax.hist(arr, bins=bins,
             alpha=1, edgecolor='k', facecolor='skyblue',
             orientation=orientation, log=log, label='teeeeest!!!!!')
