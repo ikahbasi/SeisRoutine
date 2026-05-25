@@ -33,6 +33,21 @@ def _snr_freq(signal, noise, epsilon=1e-8, axis=0, dB=False):
     return snr
 
 
+def _snr_h2v(signal, noise, epsilon=1e-8, axis=0, dB=False):
+    noise_fft = np.fft.fft(noise, axis=axis)
+    signal_fft = np.fft.fft(signal, axis=axis)
+
+    h2v = np.abs(signal_fft)**2/np.abs(noise_fft)**2
+    # Power (squared magnitude)
+    p_signal = compute_power(signal_fft,  axis=axis, domain='frequency')
+    p_noise  = compute_power(noise_fft,  axis=axis, domain='frequency')
+    p_noise += epsilon # Avoid divide-by-zero    
+    snr = p_signal / p_noise
+    if dB:
+        snr = 10 * np.log10(snr)
+    return snr
+
+
 def compute_snr(data, pick_idx,
                 noise_window=100, signal_window=200,
                 domain='time', axis=1, epsilon=1e-8, dB=False):
