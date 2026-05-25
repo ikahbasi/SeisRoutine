@@ -351,3 +351,76 @@ def picks_on_station_stream(st, picks, linestyles, colors, **kwargs):
                 color=colors[pick_type]
             )
     _finalise_figure(fig, **kwargs)
+
+
+def compare_multiple_distributions(*arrays, labels=None, colors=None,
+                                   step=0.5, around_zero=False,
+                                   text_position='top_right',
+                                   **kwargs):
+    num_arrays = len(arrays)
+
+    if labels is None:
+        labels = [f'Array {i+1}' for i in range(num_arrays)]
+    elif len(labels) != num_arrays:
+        raise ValueError("تعداد برچسب‌ها باید با تعداد آرایه‌ها برابر باشد.")
+
+    if colors is None:
+        colors = plt.cm.get_cmap('plasma', num_arrays).colors  # استفاده از رنگ‌های پیش‌فرض
+
+    # تنظیمات نمودار
+    fig = plt.figure(figsize=(10, 6))
+    # sns.set_style("whitegrid")
+    # plt.style.use('ggplot')
+
+    # رسم هیستوگرام‌ها و نمایش آمار
+    max_ = 0
+    min_ = 0
+    for arr in arrays:
+        max_ = math.ceil(max(max_, arr.max())) + step
+        min_ = math.floor(min(min_, arr.min()))
+    bins = np.arange(min_, max_, step)
+    if around_zero:
+        bins -= step/2
+    for i, arr in enumerate(arrays):
+        counts, bins, patches = plt.hist(arr, bins=bins, alpha=0.7, label=labels[i], color=colors[i], edgecolor='k', log=True)
+
+        stats_text = f'Mean: {np.mean(arr):.2f}\nStd: {np.std(arr):.2f}\nMedian: {np.median(arr):.2f}\nCounts: {arr.size}'
+        # x = 0.05
+        # y = 0.9 - i * 0.2
+        props = dict(boxstyle='round', facecolor=colors[i], alpha=0.5)
+        # plt.text(x, y, stats_text,
+        #          transform=plt.gca().transAxes, fontsize=10,
+        #          verticalalignment='top',
+        #          color='k', bbox=props)
+        
+
+        if text_position == 'top_right':
+            ha, va, x, y = 'right', 'top', 0.98, 0.96
+        elif text_position == 'top_left':
+            ha, va, x, y = 'left', 'top', 0.02, 0.96
+        elif text_position == 'bottom_right':
+            ha, va, x, y = 'right', 'bottom', 0.98, 0.04
+        elif text_position == 'bottom_left':
+            ha, va, x, y = 'left', 'bottom', 0.02, 0.04
+        else: # Default position
+            ha, va, x, y = 'right', 'top', 0.98, 0.96
+        plt.text(x, y, stats_text,
+                 transform=plt.gca().transAxes, fontsize=10,
+                 color='k',
+                 verticalalignment=va, horizontalalignment=ha, bbox=props)
+
+    # حذف فریم سمت راست و بالا
+    ax = plt.gca()
+    ax.spines['left'].set_linewidth(2)
+    ax.spines['bottom'].set_linewidth(2)
+    ax.spines['right'].set_visible(False)
+    ax.spines['top'].set_visible(False)
+    # تنظیمات تکمیلی نمودار
+    plt.xlabel('Value')
+    plt.ylabel('Frequency')
+    plt.title('Comparison of Distributions')
+    # plt.legend()
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    _finalise_ax(ax, **kwargs)
+    _finalise_figure(fig, **kwargs)
