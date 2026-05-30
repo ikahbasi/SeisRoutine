@@ -91,6 +91,64 @@ def compute_snr(data, pick_idx,
 
 def compute_snr_using_mad(data, pick_idx,
                           noise_window=200, signal_window=200, axis=1):
+    """
+    Compute Signal-to-Noise Ratio (SNR) using Median Absolute Deviation (MAD).
+
+    This function estimates SNR as the ratio of signal MAD to noise MAD.
+    Noise and signal segments are extracted relative to a given index (`pick_idx`),
+    with configurable window lengths. The function handles 1D inputs by converting
+    them to 2D (1 channel). A warning is issued if the requested window lengths
+    cannot be fully obtained from the data.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Input data array. Can be 1D (samples,) or 2D (channels, samples).
+    pick_idx : int
+        Index marking the start of the signal window. Noise window ends at this index.
+    noise_window : int, default=200
+        Number of samples to use as noise, taken immediately before `pick_idx`.
+    signal_window : int, default=200
+        Number of samples to use as signal, starting at `pick_idx`.
+    axis : int, default=1
+        Axis along which to compute MAD. For 2D data, axis=1 computes per-channel MAD
+        (across time samples). For 1D data, this parameter is effectively ignored.
+
+    Returns
+    -------
+    snr_mad : np.ndarray
+        Signal-to-noise ratio computed as signal_mad / noise_mad.
+        If input is 1D, returns a scalar.
+        If input is 2D (channels, samples), returns a 1D array of length `n_channels`.
+
+    Warns
+    -----
+    UserWarning
+        If the available noise window length is less than `noise_window`, or
+        the available signal window length is less than `signal_window`.
+
+    Notes
+    -----
+    - Noise segment: data[:, pick_idx - noise_window : pick_idx]
+    - Signal segment: data[:, pick_idx : pick_idx + signal_window]
+    - MAD is computed using `scipy.stats.median_abs_deviation` with default parameters:
+      `center=None`, `scale=1.0`, `nan_policy='propagate'`, `keepdims=False`.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from scipy import stats
+    >>> data = np.random.randn(3, 1000)
+    >>> snr = compute_snr_using_mad(data, pick_idx=500, noise_window=200, signal_window=200)
+    >>> print(snr.shape)
+    (3,)
+
+    >>> # 1D input
+    >>> data_1d = np.random.randn(1000)
+    >>> snr_scalar = compute_snr_using_mad(data_1d, pick_idx=500)
+    >>> print(type(snr_scalar))
+    <class 'numpy.float64'>
+    """
     if data.ndim == 1:
         data = np.expand_dims(data, axis=0)
     n_channels, n_samples = data.shape
@@ -123,8 +181,80 @@ def compute_snr_using_percentile(data, pick_idx,
                                  noise_window=200, signal_window=200,
                                  lbp=25, hbp=95, axis=1):
     """
-    lbp: Lower bound probability
-    hbp: higher bound probability
+    Compute Signal-to-Noise Ratio (SNR) using percentile-based trimming.
+
+    This function estimates SNR per channel as the ratio of median values
+    from the inter-percentile range of signal and noise segments. For each
+    channel, values below the `lbp`-th percentile and above the `hbp`-th
+    percentile are discarded. The median of the remaining values is computed
+    for both signal and noise, and their ratio gives the SNR. This approach
+    reduces the influence of outliers.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Input data array. Can be 1D (samples,) or 2D (channels, samples).
+    pick_idx : int
+        Index marking the start of the signal window. Noise window ends at this index.
+    noise_window : int, default=200
+        Number of samples to use as noise, taken immediately before `pick_idx`.
+    signal_window : int, default=200
+        Number of samples to use as signal, starting at `pick_idx`.
+    lbp : int or float, default=25
+        Lower bound percentile (0-100). Values below this percentile are excluded.
+    hbp : int or float, default=95
+        Upper bound percentile (0-100). Values above this percentile are excluded.
+    axis : int, default=1
+        Not used in the current implementation (the function processes each channel
+        individually). Kept for API consistency with `compute_snr_using_mad`.
+
+    Returns
+    -------
+    snr_percentile : list of float
+        A list containing SNR values for each channel. The length of the list equals
+        the number of channels (or 1 if input was 1D). Each SNR is computed as:
+        median(signal[percentile_range]) / median(noise[percentile_range]).
+
+    Warns
+    -----
+    UserWarning
+        If the available noise window length is less than `noise_window`, or
+        the available signal window length is less than `signal_window`.
+
+    Notes
+    -----
+    - Noise segment: data[:, pick_idx - noise_window : pick_idx]
+    - Signal segment: data[:, pick_idx : pick_idx + signal_window]
+    - For each channel:
+        1. Compute lower (lbp) and upper (hbp) percentiles of signal and noise.
+        2. Keep only samples within [lower_percentile, upper_percentile].
+        3. Compute median of the trimmed samples.
+        4. SNR = median(signal_trimmed) / median(noise_trimmed).
+    - This method is robust to outliers and non-Gaussian distributions.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> data = np.random.randn(3, 1000)
+    >>> snr_list = compute_snr_using_percentile(data, pick_idx=500, 
+    ...                                          noise_window=200, signal_window=200,
+    ...                                          lbp=25, hbp=95)
+    >>> print(len(snr_list))
+    3
+    >>> print(snr_list)
+    [1.234, 0.987, 1.456]
+
+    >>> # 1D input (single channel)
+    >>> data_1d = np.random.randn(1000)
+    >>> snr_scalar_list = compute_snr_using_percentile(data_1d, pick_idx=500)
+    >>> print(snr_scalar_list[0])  # Single value in a list
+    1.123
+
+    See Also
+    --------
+    compute_snr_using_mad : Compute SNR using Median Absolute Deviation.
+    numpy.percentile : Used to compute percentile bounds.
+    numpy.median : Used to compute central tendency of trimmed data.
     """
     if data.ndim == 1:
         data = np.expand_dims(data, axis=0)
@@ -144,7 +274,7 @@ def compute_snr_using_percentile(data, pick_idx,
                "but only {es-ss} is available")
         Warning(msg)
     ###
-    snr_lst = []
+    snr_percentile = []
     for ii in range(n_channels):
         signal_1d = signal[ii, :]
         signal_lb = np.percentile(signal_1d, lbp)
@@ -161,8 +291,8 @@ def compute_snr_using_percentile(data, pick_idx,
         signal_lb2ub_median = np.median(signal_selected)
         noise_lb2ub_median = np.median(noise_selected)
         snr = signal_lb2ub_median / noise_lb2ub_median
-        snr_lst.append(snr)
-    return snr_lst
+        snr_percentile.append(snr)
+    return snr_percentile
 
 
 def _flat_check(data, threshold=1e-6, axis=1):
