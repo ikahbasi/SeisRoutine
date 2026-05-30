@@ -1,4 +1,5 @@
 import numpy as np
+from scipy import stats
 
 
 def compute_power(data,  axis=0, domain='time'):
@@ -86,6 +87,82 @@ def compute_snr(data, pick_idx,
     elif domain == 'frequency':
         snr = _snr_freq(signal, noise, epsilon=epsilon, axis=axis, dB=dB)
     return snr
+
+
+def compute_snr_using_mad(data, pick_idx,
+                          noise_window=200, signal_window=200, axis=1):
+    if data.ndim == 1:
+        data = np.expand_dims(data, axis=0)
+    n_channels, n_samples = data.shape
+    sn = max(0, pick_idx - noise_window)
+    en = pick_idx
+    noise = data[:, sn: en]
+    #
+    ss = pick_idx
+    es = min(n_samples, pick_idx + signal_window)
+    signal = data[:, ss: es]
+    if ((en-sn) < noise_window) or ((es-ss) < signal_window):
+        msg = (f"Required noise length is {noise_window}, "
+               f"but only {en-sn} is available"
+               "\n"
+               f"Required signal length is {signal_window}, "
+               "but only {es-ss} is available")
+        Warning(msg)
+    ### MAD
+    noise_mad = stats.median_abs_deviation(
+        x=signal, axis=axis, center=None, scale=1.0,
+        nan_policy='propagate', keepdims=False)
+    signal_mad = stats.median_abs_deviation(
+        x=noise, axis=axis, center=None, scale=1.0,
+        nan_policy='propagate', keepdims=False)
+    snr_mad = signal_mad / noise_mad
+    return snr_mad
+
+
+def compute_snr_using_percentile(data, pick_idx,
+                                 noise_window=200, signal_window=200,
+                                 lbp=25, hbp=95, axis=1):
+    """
+    lbp: Lower bound probability
+    hbp: higher bound probability
+    """
+    if data.ndim == 1:
+        data = np.expand_dims(data, axis=0)
+    n_channels, n_samples = data.shape
+    sn = max(0, pick_idx - noise_window)
+    en = pick_idx
+    noise = data[:, sn: en]
+    #
+    ss = pick_idx
+    es = min(n_samples, pick_idx + signal_window)
+    signal = data[:, ss: es]
+    if ((en-sn) < noise_window) or ((es-ss) < signal_window):
+        msg = (f"Required noise length is {noise_window}, "
+               f"but only {en-sn} is available"
+               "\n"
+               f"Required signal length is {signal_window}, "
+               "but only {es-ss} is available")
+        Warning(msg)
+    ###
+    snr_lst = []
+    for ii in range(n_channels):
+        signal_1d = signal[ii, :]
+        signal_lb = np.percentile(signal_1d, lbp)
+        signal_ub = np.percentile(signal_1d, hbp)
+        signal_selected = signal_1d[(signal_lb <= signal_1d) &
+                                    (signal_1d <= signal_ub)]
+        #
+        noise_1d = noise[ii, :]
+        noise_lb = np.percentile(noise_1d, lbp)
+        noise_ub = np.percentile(noise_1d, hbp)
+        noise_selected = noise_1d[(noise_lb <= noise_1d) &
+                                  (noise_1d <= noise_ub)]
+    #
+        signal_lb2ub_median = np.median(signal_selected)
+        noise_lb2ub_median = np.median(noise_selected)
+        snr = signal_lb2ub_median / noise_lb2ub_median
+        snr_lst.append(snr)
+    return snr_lst
 
 
 def _flat_check(data, threshold=1e-6, axis=1):
