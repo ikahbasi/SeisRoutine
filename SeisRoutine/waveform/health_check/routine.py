@@ -110,10 +110,10 @@ def compute_snr_using_mad(data, pick_idx,
         Warning(msg)
     ### MAD
     noise_mad = stats.median_abs_deviation(
-        x=signal, axis=axis, center=None, scale=1.0,
+        x=noise, axis=axis, center=None, scale=1.0,
         nan_policy='propagate', keepdims=False)
     signal_mad = stats.median_abs_deviation(
-        x=noise, axis=axis, center=None, scale=1.0,
+        x=signal, axis=axis, center=None, scale=1.0,
         nan_policy='propagate', keepdims=False)
     snr_mad = signal_mad / noise_mad
     return snr_mad
