@@ -1,5 +1,6 @@
 import numpy as np
 from scipy import stats
+import pywt
 
 
 def compute_power(data,  axis=0, domain='time'):
@@ -293,6 +294,35 @@ def compute_snr_using_percentile(data, pick_idx,
         snr = signal_lb2ub_median / noise_lb2ub_median
         snr_percentile.append(snr)
     return snr_percentile
+
+
+def compute_snr_using_cwt(data, sps, pick_idx,
+                          scales=np.arange(1, 256), wavelet='morl',
+                          noise_window=100, signal_window=200,
+                          noise_lag=0, signal_lag=0):
+    if data.ndim == 1:
+        data = np.expand_dims(data, axis=0)
+    n_channels, n_samples = data.shape
+    sn = max(0, pick_idx - noise_window) + noise_lag
+    en = pick_idx + noise_lag
+    ss = pick_idx + signal_lag
+    es = min(n_samples, pick_idx + signal_window) + signal_lag
+    snr_lst = []
+    for ii in range(n_channels):
+        data_channel = data[ii, :]
+        coefficients, frequencies = pywt.cwt(
+            data=data_channel,
+            scales=scales,
+            wavelet=wavelet,
+            sampling_period=1/sps
+        )
+        energy = np.abs(coefficients)
+        global_energy = np.mean(energy, axis=0)
+        noise_energy =  global_energy[sn: en]
+        signal_energy = global_energy[ss: es]
+        snr_cwt = np.mean(signal_energy) / np.mean(noise_energy)
+        snr_lst.append(snr_cwt)
+    return snr_cwt
 
 
 def _flat_check(data, threshold=1e-6, axis=1):
