@@ -51,6 +51,7 @@ def _snr_h2v(signal, noise, epsilon=1e-8, axis=0, dB=False):
 
 
 def compute_snr(data, pick_idx,
+                noise_lag=0, signal_lag=0,
                 noise_window=100, signal_window=200,
                 domain='time', axis=1, epsilon=1e-8, dB=False):
     """
@@ -75,13 +76,13 @@ def compute_snr(data, pick_idx,
     if data.ndim == 1:
         data = np.expand_dims(data, axis=0)
     n_channels, n_samples = data.shape
-    s = max(0, pick_idx - noise_window)
-    e = pick_idx
-    noise = data[:, s: e]
+    sn = max(0, pick_idx - noise_window) + noise_lag
+    en = pick_idx + noise_lag
+    ss = pick_idx + signal_lag
+    es = min(n_samples, pick_idx + signal_window) + signal_lag
     #
-    s = pick_idx
-    e = min(n_samples, pick_idx + signal_window)
-    signal = data[:, s: e]
+    noise = data[:, sn: en]
+    signal = data[:, ss: es]
     #
     if domain == 'time':
         snr = _snr_time(signal, noise, epsilon=epsilon, axis=axis, dB=dB)
@@ -91,7 +92,9 @@ def compute_snr(data, pick_idx,
 
 
 def compute_snr_using_mad(data, pick_idx,
-                          noise_window=200, signal_window=200, axis=1):
+                          noise_window=200, signal_window=200,
+                          noise_lag=0, signal_lag=0,
+                          axis=1):
     """
     Compute Signal-to-Noise Ratio (SNR) using Median Absolute Deviation (MAD).
 
@@ -153,12 +156,12 @@ def compute_snr_using_mad(data, pick_idx,
     if data.ndim == 1:
         data = np.expand_dims(data, axis=0)
     n_channels, n_samples = data.shape
-    sn = max(0, pick_idx - noise_window)
-    en = pick_idx
-    noise = data[:, sn: en]
+    sn = max(0, pick_idx - noise_window) + noise_lag
+    en = pick_idx + noise_lag
+    ss = pick_idx + signal_lag
+    es = min(n_samples, pick_idx + signal_window) + signal_lag
     #
-    ss = pick_idx
-    es = min(n_samples, pick_idx + signal_window)
+    noise = data[:, sn: en]
     signal = data[:, ss: es]
     if ((en-sn) < noise_window) or ((es-ss) < signal_window):
         msg = (f"Required noise length is {noise_window}, "
@@ -180,6 +183,7 @@ def compute_snr_using_mad(data, pick_idx,
 
 def compute_snr_using_percentile(data, pick_idx,
                                  noise_window=200, signal_window=200,
+                                 noise_lag=0, signal_lag=0,
                                  lbp=25, hbp=95, axis=1):
     """
     Compute Signal-to-Noise Ratio (SNR) using percentile-based trimming.
@@ -260,12 +264,12 @@ def compute_snr_using_percentile(data, pick_idx,
     if data.ndim == 1:
         data = np.expand_dims(data, axis=0)
     n_channels, n_samples = data.shape
-    sn = max(0, pick_idx - noise_window)
-    en = pick_idx
-    noise = data[:, sn: en]
+    sn = max(0, pick_idx - noise_window) + noise_lag
+    en = pick_idx + noise_lag
+    ss = pick_idx + signal_lag
+    es = min(n_samples, pick_idx + signal_window) + signal_lag
     #
-    ss = pick_idx
-    es = min(n_samples, pick_idx + signal_window)
+    noise = data[:, sn: en]
     signal = data[:, ss: es]
     if ((en-sn) < noise_window) or ((es-ss) < signal_window):
         msg = (f"Required noise length is {noise_window}, "
