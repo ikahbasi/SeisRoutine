@@ -306,11 +306,19 @@ def compute_snr_using_cwt(data, sps, pick_idx,
                           noise_lag=0, signal_lag=0):
     if data.ndim == 1:
         data = np.expand_dims(data, axis=0)
+    ################
+    n_channels, n_samples = data.shape
+    sn = max(0, pick_idx - (noise_window*5))
+    es = min(n_samples, pick_idx + (signal_window*5))
+    data = data[:, sn: es]
+    pick_idx = pick_idx - sn
+    ################
     n_channels, n_samples = data.shape
     sn = max(0, pick_idx - noise_window) + noise_lag
     en = pick_idx + noise_lag
     ss = pick_idx + signal_lag
     es = min(n_samples, pick_idx + signal_window) + signal_lag
+    ###############
     snr_lst = []
     for ii in range(n_channels):
         data_channel = data[ii, :]
