@@ -326,7 +326,7 @@ def compute_snr_using_cwt(data, sps, pick_idx,
         signal_energy = global_energy[ss: es]
         snr_cwt = np.mean(signal_energy) / np.mean(noise_energy)
         snr_lst.append(snr_cwt)
-    return snr_cwt
+    return snr_lst
 
 
 def _flat_check(data, threshold=1e-6, axis=1):
