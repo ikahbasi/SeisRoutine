@@ -236,3 +236,54 @@ def variance(data,
     if max > threshold*var:
         spike = True
     return spike
+
+
+def hampel_spike_detection(x, window_size=161, n_sigmas=3):
+    """
+    Detect spikes using Hampel filter.
+    Based on:
+        INSTANCE - the Italian seismic dataset for machine learning 
+        https://doi.org/10.5194/essd-13-5509-2021
+    This function was generated using ChatGPT.
+    
+    Parameters
+    ----------
+    x : np.ndarray
+        Input signal (1D array)
+    window_size : int
+        Sliding window size (must be odd, e.g. 161)
+    n_sigmas : float
+        Threshold in terms of MAD (typical: 3)
+
+    Returns
+    -------
+    spikes : np.ndarray (bool)
+        Boolean mask where True indicates spikes
+    filtered : np.ndarray
+        Signal with spikes optionally replaced by median
+    """
+    x = np.asarray(x)
+    n = len(x)
+    half_window = window_size // 2
+
+    spikes = np.zeros(n, dtype=bool)
+    filtered = x.copy()
+
+    for i in range(n):
+        start = max(i - half_window, 0)
+        end = min(i + half_window + 1, n)
+
+        window = x[start:end]
+        median = np.median(window)
+        mad = np.median(np.abs(window - median))
+
+        if mad == 0:
+            continue
+
+        threshold = n_sigmas * 1.4826 * mad  # scale factor for Gaussian noise
+
+        if np.abs(x[i] - median) > threshold:
+            spikes[i] = True
+            filtered[i] = median  # optional replacement
+
+    return spikes, filtered
