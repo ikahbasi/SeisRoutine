@@ -197,3 +197,42 @@ def wavelet(data, wavelet='db4', level=4, coeffs_index=-1, threshold=3.5):
     factor = len(data) / len(detail)
     approx_indices = np.round(spike_locs * factor).astype(int)
     return approx_indices
+
+
+def variance(data,
+             start_idx_noise=0,
+             end_idx_noise=-1,
+             threshold=5):
+    """
+    Detect whether a spike is present in the noise segment based on variance.
+
+    This function extracts a noise segment from the input data using the given
+    start and end indices, computes its variance and maximum absolute value,
+    and compares the maximum to a threshold multiple of the variance. If the
+    maximum exceeds the threshold times the variance, a spike is flagged.
+
+    Parameters
+    ----------
+    data : array-like
+        Input data array (e.g., NumPy array or PyTorch tensor) supporting
+        slicing, `.var()`, `.item()`, and `np.abs()`.
+    start_idx_noise : int, optional
+        Start index for the noise segment (default is 0).
+    end_idx_noise : int, optional
+        End index for the noise segment (default is -1, meaning last element).
+    threshold : float or int, optional
+        Multiplier for the variance to set the spike detection threshold
+        (default is 5).
+
+    Returns
+    -------
+    spike : bool
+        True if `max(|noise|) > threshold * variance(noise)`, otherwise False.
+    """
+    noise = data[start_idx_noise: end_idx_noise]
+    var = noise.var().item()
+    max = np.abs(noise).max()
+    spike = False
+    if max > threshold*var:
+        spike = True
+    return spike
