@@ -2,6 +2,7 @@ import numpy as np
 from scipy.signal import find_peaks
 import pywt
 import SeisRoutine.utils.statistics as srus
+from scipy.stats import skew
 
 
 def zscore(data, threshold=10):
@@ -287,3 +288,7 @@ def hampel(x, window_size=161, n_sigmas=3):
             filtered[i] = median  # optional replacement
     spikes = np.where(spikes)[0]
     return spikes, filtered
+
+
+def skewness(data, threshold=5):
+    return skew(data) > threshold
