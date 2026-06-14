@@ -38,7 +38,7 @@ def zscore(data, threshold=10):
     return spikes[0]
 
 
-def differential(data, threshold=5.0):
+def differential(data, dt=0.01, threshold=5.0):
     """
     Detect spikes in a 1D signal based on large differences between consecutive values.
 
@@ -72,7 +72,7 @@ def differential(data, threshold=5.0):
         >>> spike_detection_diff(data, threshold=5.0)
         array([2])
     """
-    diffs = np.abs(np.diff(data))
+    diffs = np.abs(np.diff(data)) / dt
     spikes = np.where(diffs > threshold)
     return spikes[0]
 
@@ -285,5 +285,5 @@ def hampel(x, window_size=161, n_sigmas=3):
         if np.abs(x[i] - median) > threshold:
             spikes[i] = True
             filtered[i] = median  # optional replacement
-
+    spikes = np.where(spikes)[0]
     return spikes, filtered
