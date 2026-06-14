@@ -238,7 +238,7 @@ def variance(data,
     return spike
 
 
-def hampel_spike_detection(x, window_size=161, n_sigmas=3):
+def hampel(x, window_size=161, n_sigmas=3):
     """
     Detect spikes using Hampel filter.
     Based on:
