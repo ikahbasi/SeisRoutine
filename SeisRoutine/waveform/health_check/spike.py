@@ -290,5 +290,101 @@ def hampel(x, window_size=161, n_sigmas=3):
     return spikes, filtered
 
 
-def skewness(data, threshold=5):
-    return skew(data) > threshold
+def spike_by_skewness(data, threshold=5, axis=1):
+    """
+    Detect potential seismic spikes using the skewness of the amplitude
+    distribution.
+
+    Skewness measures the asymmetry of the data distribution. Seismic traces
+    containing one or a few large-amplitude spikes typically exhibit a highly
+    skewed distribution because the extreme values distort the statistical
+    balance of the samples.
+
+    Parameters
+    ----------
+    data : array-like
+        One- and multi-dimensional seismic trace or amplitude samples.
+    threshold : float, default=5
+        Minimum skewness value required to classify the trace as containing
+        potential spikes.
+
+    Returns
+    -------
+    bool
+        True if the computed skewness is greater than `threshold`, otherwise
+        False.
+
+    Notes
+    -----
+    Interpretation of skewness values:
+
+    - |skewness| < 0.5:
+      Approximately symmetric distribution. Typically indicates normal
+      seismic behavior without significant spikes.
+
+    - 0.5 <= |skewness| < 1:
+      Mild asymmetry. May result from geological features, amplitude trends,
+      or weak outliers rather than true spikes.
+
+    - 1 <= |skewness| < 3:
+      Moderate asymmetry. Can indicate the presence of outliers or localized
+      high-amplitude events and may warrant further inspection.
+
+    - 3 <= |skewness| < 5:
+      Strong asymmetry. Often associated with abnormal amplitudes and possible
+      spike contamination.
+
+    - skewness >= 5:
+      Very strong positive skewness. Commonly considered a strong indicator of
+      one or more extreme positive-amplitude spikes in seismic data.
+
+    Limitations
+    -----------
+    - This metric is sensitive to any extreme values, not only spikes.
+    - Genuine seismic events with unusually large amplitudes may also produce
+      high skewness values.
+    - Negative spikes produce large negative skewness values and will not be
+      detected by this implementation because it only checks for
+      `skew(data) > threshold`.
+    - For detecting both positive and negative spikes, consider using
+      `abs(skew(data)) > threshold`.
+    - Skewness alone is not sufficient for reliable spike detection.
+      For example, a trace containing a single extreme amplitude value will
+      typically produce a large skewness value and be flagged as a potential
+      spike. However, traces containing both large positive and negative
+      outliers may exhibit a skewness close to zero despite clearly containing
+      abnormal amplitudes.
+
+      Example:
+      [0.1, 0.2, 0.3, 0.4, 12.0]
+      -> High skewness, likely spike contamination.
+
+      Example:
+      [-20.0, 0.0, 0.0, 0.0, 20.0]
+      -> Skewness may be close to zero even though two extreme spikes are
+         present.
+
+      Therefore, skewness should be considered a screening metric rather than
+      a definitive spike detector. For improved robustness, it is recommended
+      to combine skewness with additional outlier-sensitive statistics such as
+      kurtosis, median absolute deviation (MAD), or modified z-score methods.
+
+    Examples
+    --------
+    >>> skewness(a)
+    False
+
+    >>> skewness(trace, threshold=3)
+    True
+    """
+    data = np.asarray(data)
+    data -= data.mean()
+    data[~np.isfinite(data)] = 0
+
+    if len(data) < 30:
+        Warning("Insufficient samples for reliable skewness estimation")
+
+    s = skew(data, bias=False, axis=axis)
+    spike = abs(s) > threshold
+
+    return spike, s
