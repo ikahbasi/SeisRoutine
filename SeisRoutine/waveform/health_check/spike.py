@@ -240,7 +240,7 @@ def variance(data,
     return spike
 
 
-def hampel(x, window_size=161, n_sigmas=3):
+def hampel(data, window_size=161, n_sigmas=3):
     """
     Detect spikes using Hampel filter.
     Based on:
@@ -250,7 +250,7 @@ def hampel(x, window_size=161, n_sigmas=3):
     
     Parameters
     ----------
-    x : np.ndarray
+    data : np.ndarray
         Input signal (1D array)
     window_size : int
         Sliding window size (must be odd, e.g. 161)
@@ -264,31 +264,32 @@ def hampel(x, window_size=161, n_sigmas=3):
     filtered : np.ndarray
         Signal with spikes optionally replaced by median
     """
-    x = np.asarray(x)
-    n = len(x)
+    data = np.asarray(data)
+    n = len(data)
     half_window = window_size // 2
 
-    spikes = np.zeros(n, dtype=bool)
-    filtered = x.copy()
+    spike_mask = np.zeros(n, dtype=bool)
+    filtered = data.copy()
 
     for i in range(n):
-        start = max(i - half_window, 0)
-        end = min(i + half_window + 1, n)
+        start = max(0, i-half_window)
+        end = min(i+half_window+1, n)
 
-        window = x[start:end]
+        window = data[start:end]
         median = np.median(window)
         mad = np.median(np.abs(window - median))
 
         if mad == 0:
             continue
 
-        threshold = n_sigmas * 1.4826 * mad  # scale factor for Gaussian noise
+        k = 1.4826  # MAD to standard deviation conversion factor
+        threshold = n_sigmas * k * mad  # scale factor for Gaussian noise
 
-        if np.abs(x[i] - median) > threshold:
-            spikes[i] = True
+        if np.abs(data[i] - median) > threshold:
+            spike_mask[i] = True
             filtered[i] = median  # optional replacement
-    spikes = np.where(spikes)[0]
-    return spikes, filtered
+    spike_idx = np.where(spike_mask)[0]
+    return spike_idx, filtered
 
 
 def spike_by_skewness(data, threshold=5, axis=1, preprocessing=False):
