@@ -3,6 +3,7 @@ from scipy.signal import find_peaks
 import pywt
 import SeisRoutine.utils.statistics as srus
 from scipy.stats import skew
+from scipy.stats import kurtosis
 
 
 def zscore(data, threshold=10):
@@ -290,7 +291,7 @@ def hampel(x, window_size=161, n_sigmas=3):
     return spikes, filtered
 
 
-def spike_by_skewness(data, threshold=5, axis=1):
+def spike_by_skewness(data, threshold=5, axis=1, preprocessing=False):
     """
     Detect potential seismic spikes using the skewness of the amplitude
     distribution.
@@ -377,9 +378,10 @@ def spike_by_skewness(data, threshold=5, axis=1):
     >>> skewness(trace, threshold=3)
     True
     """
-    data = np.asarray(data)
-    data -= data.mean()
-    data[~np.isfinite(data)] = 0
+    if preprocessing:
+        data = np.asarray(data)
+        data -= data.mean()
+        data[~np.isfinite(data)] = 0
 
     if len(data) < 30:
         Warning("Insufficient samples for reliable skewness estimation")
@@ -388,3 +390,104 @@ def spike_by_skewness(data, threshold=5, axis=1):
     spike = abs(s) > threshold
 
     return spike, s
+
+
+def spike_by_kurtosis(data, threshold=10, axis=1, preprocessing=False):
+    """
+    Detect potential seismic spikes using the kurtosis of the amplitude
+    distribution.
+
+    Kurtosis measures the heaviness of the distribution tails relative to a
+    normal distribution. Seismic traces containing spikes typically exhibit
+    elevated kurtosis because a small number of extreme amplitude samples
+    contribute disproportionately to the fourth statistical moment.
+
+    Parameters
+    ----------
+    data : array-like
+        One- and multi-dimensional seismic trace or amplitude samples.
+    threshold : float, default=10
+        Minimum kurtosis value required to classify the trace as containing
+        potential spikes.
+    axis : int, default=1
+        Axis along which kurtosis is computed.
+
+    Returns
+    -------
+    tuple[np.ndarray | bool, np.ndarray | float]
+        A tuple containing:
+
+        - spike : bool or ndarray of bool
+            True where kurtosis exceeds the specified threshold.
+        - k : float or ndarray
+            Computed kurtosis values.
+
+    Notes
+    -----
+    Interpretation of kurtosis values (Pearson definition):
+
+    - kurtosis ≈ 3:
+      Distribution similar to a Gaussian distribution. Typically indicates
+      normal seismic amplitudes without significant spikes.
+
+    - 3 < kurtosis < 5:
+      Mildly heavy tails. May indicate weak outliers or localized amplitude
+      anomalies.
+
+    - 5 <= kurtosis < 10:
+      Moderate tail heaviness. Often associated with abnormal amplitudes and
+      potential spike contamination.
+
+    - 10 <= kurtosis < 20:
+      Strong evidence of extreme amplitudes and likely spike presence.
+
+    - kurtosis >= 20:
+      Very heavy-tailed distribution. Commonly indicates severe spike
+      contamination or acquisition artifacts.
+
+    Limitations
+    -----------
+    - Kurtosis is sensitive to all extreme values, not only spikes.
+    - Genuine seismic events with unusually large amplitudes may also produce
+      elevated kurtosis values.
+    - Kurtosis does not provide information about the polarity of anomalies.
+      Positive and negative spikes contribute similarly.
+    - A small number of extreme samples can dominate the metric.
+    - Thresholds are data-dependent and may require calibration for different
+      surveys, processing stages, or acquisition systems.
+
+    Advantages over Skewness
+    ------------------------
+    - Kurtosis is sensitive to both positive and negative spikes.
+    - Symmetric spike contamination can still be detected even when skewness
+      is close to zero.
+
+      Example:
+      [-20.0, 0.0, 0.0, 0.0, 20.0]
+
+      This trace may exhibit near-zero skewness due to symmetry, but its
+      kurtosis will typically be elevated because of the extreme amplitudes.
+
+    - For seismic quality control, kurtosis is often more robust than
+      skewness as a first-order spike screening metric.
+
+    Examples
+    --------
+    >>> spike_by_kurtosis(trace)
+    (False, 3.2)
+
+    >>> spike_by_kurtosis(trace, threshold=8)
+    (True, 14.7)
+    """
+    if preprocessing:
+        data = np.asarray(data)
+        data -= data.mean()
+        data[~np.isfinite(data)] = 0
+
+    if len(data) < 30:
+        Warning("Insufficient samples for reliable kurtosis estimation")
+
+    k = kurtosis(data, fisher=False, bias=False, axis=axis)
+    spike = k > threshold
+
+    return spike, k
