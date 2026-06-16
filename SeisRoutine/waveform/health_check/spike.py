@@ -302,6 +302,11 @@ def spike_by_skewness(data, threshold=5, axis=1, preprocessing=False):
     skewed distribution because the extreme values distort the statistical
     balance of the samples.
 
+                        skewness = E[((X - μ) / σ)^3]
+    which:
+        μ: population mean
+        σ: population standard deviation
+
     Parameters
     ----------
     data : array-like
@@ -393,7 +398,8 @@ def spike_by_skewness(data, threshold=5, axis=1, preprocessing=False):
     return spike, s
 
 
-def spike_by_kurtosis(data, threshold=10, axis=1, preprocessing=False):
+def spike_by_kurtosis(data, threshold=10, fisher=False,
+                      axis=1, preprocessing=False):
     """
     Detect potential seismic spikes using the kurtosis of the amplitude
     distribution.
@@ -402,6 +408,15 @@ def spike_by_kurtosis(data, threshold=10, axis=1, preprocessing=False):
     normal distribution. Seismic traces containing spikes typically exhibit
     elevated kurtosis because a small number of extreme amplitude samples
     contribute disproportionately to the fourth statistical moment.
+
+    if fisher=True:
+                        K = E[((X - μ) / σ$)^4] - 3
+    if fisher=False:
+                        K = E[((X - μ) / σ)^4]
+    which:
+        μ: population mean
+        σ: population standard deviation
+
 
     Parameters
     ----------
@@ -488,7 +503,7 @@ def spike_by_kurtosis(data, threshold=10, axis=1, preprocessing=False):
     if len(data) < 30:
         Warning("Insufficient samples for reliable kurtosis estimation")
 
-    k = kurtosis(data, fisher=False, bias=False, axis=axis)
+    k = kurtosis(data, fisher=fisher, bias=False, axis=axis)
     spike = k > threshold
 
     return spike, k
