@@ -507,3 +507,57 @@ def spike_by_kurtosis(data, threshold=10, fisher=False,
     spike = k > threshold
 
     return spike, k
+
+
+def min_max_ratio(data):
+    """
+    Measure amplitude symmetry around the signal mean.
+
+    The signal mean is used as the reference level, and the distances
+    from the mean to the minimum and maximum amplitudes are compared:
+
+        ratio = min(|min(data) - mean(data)|,
+                    |max(data) - mean(data)|)
+                /
+                max(|min(data) - mean(data)|,
+                    |max(data) - mean(data)|)
+
+    The returned value ranges from 0 to 1:
+
+        - 1.0 indicates perfect symmetry around the mean.
+        - Values close to 0 indicate a strongly one-sided signal, where
+          excursions occur predominantly on one side of the mean.
+        - Intermediate values indicate partial asymmetry.
+
+    Parameters
+    ----------
+    data : array_like
+        Input signal.
+
+    Returns
+    -------
+    float
+        Symmetry ratio in the range [0, 1].
+
+    Examples
+    --------
+    >>> min_max_ratio(np.array([-5, 0, 5]))
+    1.0
+
+    >>> min_max_ratio(np.array([-2, 0, 8]))
+    0.25
+
+    >>> min_max_ratio(np.array([5, 5, 10]))
+    0.0
+
+    Notes
+    -----
+    This metric is insensitive to DC offsets because symmetry is measured
+    relative to the signal mean rather than zero. It only considers the
+    extreme values of the signal and does not account for waveform shape,
+    energy distribution, or sample density.
+    """
+    mean = data.mean()
+    min_ = abs(data.min()-mean)
+    max_ = abs(data.max()-mean)
+    return min(min_, max_) / max(min_, max_)
