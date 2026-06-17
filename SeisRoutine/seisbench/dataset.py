@@ -222,8 +222,8 @@ def build_station_metadata(df):
         stations[station_id] = {
             "station_id": station_id,
 
-            "station_network_code": row.network,
             "station_code": row.station,
+            "station_network_code": row.network,
             "station_location_code": location,
 
             "station_latitude_deg": row.latitude,
@@ -240,3 +240,54 @@ def build_station_metadata(df):
         }
 
     return stations
+
+
+def get_pick_trace_params(pick):
+
+    waveform_id = pick.waveform_id
+
+    if waveform_id is None:
+        pick_trace_params = {}
+    else:
+        net = waveform_id.network_code
+        sta = waveform_id.station_code
+        loc = waveform_id.location_code or ""
+
+        channel_code = waveform_id.channel_code
+
+        pick_trace_params = {
+            "station_id":
+                f"{net}.{sta}"
+                if loc == ""
+                else f"{net}.{sta}.{loc}",
+
+            "station_network_code": net,
+            "station_code": sta,
+            "station_location_code": loc,
+
+            "trace_channel_type":
+                channel_code[:2]
+                if channel_code is not None
+                else None,
+
+            "trace_phase_hint": pick.phase_hint,
+
+            "trace_pick_time": pick.time.datetime,
+
+            "trace_evaluation_mode":
+                str(pick.evaluation_mode)
+                if pick.evaluation_mode is not None
+                else None,
+
+            "trace_onset":
+                str(pick.onset)
+                if pick.onset is not None
+                else None,
+
+            "trace_polarity":
+                str(pick.polarity)
+                if pick.polarity is not None
+                else None,
+        }
+
+    return pick_trace_params
