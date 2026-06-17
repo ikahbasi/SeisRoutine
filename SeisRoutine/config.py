@@ -1,9 +1,9 @@
 from datetime import datetime
+from pathlib import Path
 import logging
 import os
 import sys
 import yaml
-import ipynbname
 import coloredlogs
 
 
@@ -145,31 +145,28 @@ def configure_logging(level,
     print(f"Logging Starts in:\n{filename}")
 
 
-def getting_filename_and_path_of_the_running_code():
+def get_running_file_info():
     """
-    Get the filename and directory path of the currently executing code.
-    
-    This function works for both regular Python scripts (.py files) and Jupyter Notebooks
-    (.ipynb files). For notebooks, it handles both VS Code's environment and standard
-    Jupyter environments.
+    Return the path of the main script or notebook being executed.
 
-    Returns:
-        tuple: A tuple containing (directory_path, filename) of the running code.
-        
-    Note:
-        In Jupyter Notebook environments, returns the notebook name and path.
-        In regular Python scripts, returns the script name and path.
+    Examples
+    --------
+    >>> file_path = get_running_file()
+    >>> file_path.name      # Filename with extension
+    >>> file_path.stem      # Filename without extension
+    >>> file_path.parent    # Directory path
+    >>> str(file_path)      # Full path
     """
-    _file = sys.argv[0]
-    name = os.path.basename(_file)
-    path = os.path.dirname(_file)
-    if name == "ipykernel_launcher.py":
-        try:
-            _file = globals()['__vsc_ipynb_file__']
-            name = os.path.basename(_file)
-            path = os.path.dirname(_file)
-        except Exception as error:
-            print(error)
-            name = ipynbname.name()
-            path = ipynbname.path()
-    return path, name
+
+    try:
+        return Path(__vsc_ipynb_file__).resolve()
+
+    except NameError:
+
+        file_path = Path(sys.argv[0]).resolve()
+
+        if file_path.name == "ipykernel_launcher.py":
+            import ipynbname
+            file_path = Path(ipynbname.path()).resolve()
+
+        return file_path
