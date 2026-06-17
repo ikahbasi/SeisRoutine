@@ -189,3 +189,54 @@ def get_event_params(event):
     }
 
     return event_params
+
+
+def build_station_metadata(df):
+    """
+    Build station metadata dictionary from a station dataframe.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Station metadata table.
+
+    Returns
+    -------
+    dict
+        Dictionary indexed by station_id.
+    """
+
+    stations = {}
+
+    for row in df.itertuples(index=False):
+
+        location = (
+            str(row.location)
+            if row.location is not None
+            else ""
+        )
+
+        # station_id = f"{row.network}.{row.station}.{location}.{row.channel}"
+        station_id = row.station
+
+        stations[station_id] = {
+            "station_id": station_id,
+
+            "station_network_code": row.network,
+            "station_code": row.station,
+            "station_location_code": location,
+
+            "station_latitude_deg": row.latitude,
+            "station_longitude_deg": row.longitude,
+            "station_elevation_m": row.elevation,
+
+            "station_channel_type": row.channel,
+
+            "station_sensor_model": row.sensor,
+
+            "station_region": row.region,
+
+            "station_sensitivity_counts_spm": None,
+        }
+
+    return stations
