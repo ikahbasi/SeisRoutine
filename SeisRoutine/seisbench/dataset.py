@@ -1,5 +1,5 @@
 from math import cos, radians
-
+import SeisRoutine.catalog as src
 
 def get_uncertainty(error_obj):
     """
@@ -291,3 +291,101 @@ def get_pick_trace_params(pick):
         }
 
     return pick_trace_params
+
+
+ARRIVAL_ATTRIBUTES = {
+    "distance_deg": "distance",
+    "azimuth_deg": "azimuth",
+    "time_residual_sec": "time_residual",
+    "time_weight": "time_weight",
+    "takeoff_angle_deg": "takeoff_angle",
+    "backazimuth_residual_deg": "backazimuth_residual",
+    "backazimuth_weight": "backazimuth_weight",
+}
+
+
+def get_phase_params(pick, event):
+    """
+    Extract arrival-related phase parameters associated with a pick.
+
+    The function searches for the Arrival object linked to the given
+    Pick within the preferred origin of the event and extracts selected
+    arrival attributes. Extracted parameters are suffixed with the phase
+    name (e.g., ``_P`` or ``_S``) so that multiple phase measurements
+    can be stored in a single metadata record.
+
+    Parameters
+    ----------
+    pick : obspy.core.event.Pick
+        Pick object containing phase information.
+    event : obspy.core.event.Event
+        Event containing origins and arrivals.
+
+    Returns
+    -------
+    dict
+        Dictionary containing available arrival parameters. Keys are
+        formatted as ``phase_<parameter>_<phase>``. An empty dictionary
+        is returned if no origin or matching arrival is found.
+
+    Notes
+    -----
+    Extracted parameters may include:
+
+    - phase_distance_deg_<phase>
+    - phase_azimuth_deg_<phase>
+    - phase_time_residual_sec_<phase>
+    - phase_time_weight_<phase>
+    - phase_takeoff_angle_deg_<phase>
+    - phase_backazimuth_residual_deg_<phase>
+    - phase_backazimuth_weight_<phase>
+
+    Examples
+    --------
+    Extract parameters for a single phase:
+
+    >>> get_phase_params(p_pick, event)
+    {
+        'phase_distance_deg_P': 1.25,
+        'phase_time_residual_sec_P': -0.08,
+        'phase_time_weight_P': 1.0
+    }
+
+    Merge P- and S-phase parameters into a single metadata record:
+
+    >>> params = {
+    ...     **get_phase_params(p_pick, event),
+    ...     **get_phase_params(s_pick, event),
+    ... }
+    """
+
+    phase_params = {}
+
+    origin = event.preferred_origin()
+
+    if origin is None and event.origins:
+        origin = event.origins[0]
+
+    if origin is not None:
+
+        arrival = src.select_arrival_related_to_the_pick(
+            pick=pick,
+            arrivals=origin.arrivals,
+        )
+
+        if arrival is not None:
+
+            phase = (pick.phase_hint or "UNK").upper()
+
+            arrival_params = {
+                key: getattr(arrival, attribute)
+                for key, attribute in ARRIVAL_ATTRIBUTES.items()
+            }
+
+            phase_params = {
+                f"phase_{key}_{phase}": value
+                for key, value in arrival_params.items()
+                if value is not None
+            }
+
+    return phase_params
