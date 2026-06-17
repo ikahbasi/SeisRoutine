@@ -8,6 +8,8 @@ import coloredlogs
 import platform
 import subprocess
 from importlib.metadata import distributions
+import inspect
+import json
 
 
 class Config:
@@ -148,31 +150,274 @@ def configure_logging(level,
     print(f"Logging Starts in:\n{filename}")
 
 
-def get_running_file_info():
+class RuntimeLocation:
     """
-    Return the path of the main script or notebook being executed.
+    Detects the calling context of a function (script file, notebook file,
+    or interactive terminal) across Windows/Linux and across VSCode,
+    Jupyter Notebook/Lab, and Spyder.
 
-    Examples
-    --------
-    >>> file_path = get_running_file()
-    >>> file_path.name      # Filename with extension
-    >>> file_path.stem      # Filename without extension
-    >>> file_path.parent    # Directory path
-    >>> str(file_path)      # Full path
+    All methods are static, so the class can be used without instantiation:
+
+        from runtime_location import RuntimeLocation
+        print(RuntimeLocation.log_location())
+    
+        
+    A small utility to automatically detect "where" a function was called from,
+    so the information can be written to a log file. It distinguishes between:
+
+        1) Running a .py file directly
+        (terminal `python script.py`, VSCode "Run", or Spyder's runfile())
+        -> returns the name and directory of that file.
+
+        2) Running inside a Jupyter notebook (.ipynb)
+        - a notebook opened inside VSCode
+        - a classic Jupyter Notebook / JupyterLab notebook
+        -> tries to resolve the .ipynb file's name and directory in both cases.
+
+        3) Interactive execution with no backing file (a "terminal")
+        - Spyder's interactive console
+        - an IPython terminal
+        - a plain Python REPL
+        -> returns the current working directory (cwd) in these cases.
+
+    Cross-platform: works on both Windows and Linux (all paths are built with
+    os.path / pathlib, which are platform-aware).
+
+    Known limitation:
+        Resolving the exact .ipynb path in classic Jupyter Notebook/Lab requires
+        querying the local Jupyter server's REST API (the same technique used by
+        well-known packages such as ipynbname / nci_ipynb). If that query fails
+        for any reason (jupyter_core missing, server unreachable, etc.), the
+        method falls back to the "Jupyter Notebook" label with just the current
+        working directory instead of raising an error.
+        If you install the `ipynbname` package (`pip install ipynbname`),
+        detection is usually more accurate and robust; this class will use it
+        automatically when available.
     """
 
-    try:
-        return Path(__vsc_ipynb_file__).resolve()
+    # ----------------------------------------------------------------- #
+    # Internal helper methods
+    # ----------------------------------------------------------------- #
 
-    except NameError:
+    @staticmethod
+    def _get_ipython_instance():
+        """Return the IPython shell instance if running inside IPython/Jupyter, else None."""
+        try:
+            return get_ipython()  # noqa: F821  -> only defined inside an IPython/Jupyter runtime
+        except NameError:
+            return None
 
-        file_path = Path(sys.argv[0]).resolve()
+    @staticmethod
+    def _is_spyder_console():
+        """
+        Detect whether the current process is a Spyder interactive console.
+        The most reliable signal: Spyder consoles are always launched through
+        the spyder_kernels package.
+        """
+        if "spyder_kernels" in sys.modules:
+            return True
+        if any(var in os.environ for var in ("SPY_PYTHONPATH", "SPYDER_ARGS")):
+            return True
+        return False
 
-        if file_path.name == "ipykernel_launcher.py":
+    @staticmethod
+    def _vscode_notebook_file(ip):
+        """
+        VSCode's Jupyter extension injects a __vsc_ipynb_file__ variable into
+        the user namespace (user_ns), pointing to the absolute path of the
+        currently open .ipynb file.
+        """
+        try:
+            path = ip.user_ns.get("__vsc_ipynb_file__")
+        except Exception:
+            return None
+        if path and os.path.exists(path):
+            return path
+        return None
+
+    @staticmethod
+    def _classic_jupyter_notebook_path():
+        """
+        Try to resolve the .ipynb file path for classic Jupyter Notebook/Lab.
+        First attempts the `ipynbname` package (if installed, since it is the
+        most accurate and actively maintained implementation of this trick).
+        Falls back to a manual implementation of the same approach: derive
+        the kernel_id from the connection file, then query the running
+        Jupyter server(s)' REST API for the matching session.
+        """
+        try:
             import ipynbname
-            file_path = Path(ipynbname.path()).resolve()
+            return str(ipynbname.path())
+        except Exception:
+            pass
 
-        return file_path
+        try:
+            import ipykernel
+            from itertools import chain
+            from urllib.request import urlopen
+
+            try:
+                from jupyter_core.paths import jupyter_runtime_dir
+                runtime_dir = Path(jupyter_runtime_dir())
+            except Exception:
+                return None
+
+            connection_file = Path(ipykernel.get_connection_file()).stem
+            kernel_id = connection_file.split("-", 1)[-1]
+
+            server_files = sorted(
+                chain(
+                    runtime_dir.glob("nbserver-*.json"),  # classic Jupyter Notebook / Lab 2
+                    runtime_dir.glob("jpserver-*.json"),  # JupyterLab 3+ / Notebook 7+
+                ),
+                key=os.path.getmtime,
+                reverse=True,
+            )
+
+            for server_file in server_files:
+                try:
+                    info = json.loads(server_file.read_text())
+                    token = info.get("token", "") or os.environ.get("JUPYTERHUB_API_TOKEN", "")
+                    qs = f"?token={token}" if token else ""
+                    url = f"{info['url']}api/sessions{qs}"
+                    sessions = json.loads(urlopen(url, timeout=1.0).read())
+                    for sess in sessions:
+                        if sess.get("kernel", {}).get("id") == kernel_id:
+                            # Response shape differs slightly across server versions
+                            rel_path = sess.get("path") or sess.get("notebook", {}).get("path")
+                            if not rel_path:
+                                continue
+                            root_dir = info.get("root_dir") or info.get("notebook_dir")
+                            if root_dir:
+                                return str(Path(root_dir) / rel_path)
+                            return rel_path
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        return None
+
+    # ----------------------------------------------------------------- #
+    # Public API (import and use these)
+    # ----------------------------------------------------------------- #
+
+    @staticmethod
+    def get_caller_info(_offset=0):
+        """
+        Return information about the environment this method was called from.
+
+        You normally don't need to touch the _offset parameter; it only
+        exists to let other helper methods (like log_location) build on top
+        of this one while still pointing at the real caller.
+
+        Returns -> dict with keys:
+            kind       : machine-readable environment id:
+                         'script' | 'jupyter' | 'vscode_notebook' |
+                         'spyder_console' | 'terminal_ipython' | 'terminal_python'
+            label      : human-readable label
+            name       : file name (or environment label in interactive mode)
+            directory  : directory path (file location, or current working
+                         directory in interactive mode)
+            full_path  : full file path if available, otherwise None
+        """
+        stack = inspect.stack()
+        frame_info = stack[1 + _offset]
+        caller_globals = frame_info.frame.f_globals
+        file_in_globals = caller_globals.get("__file__")
+
+        # 1) Direct execution of a .py file
+        #    (terminal, VSCode "Run", or Spyder's runfile() - in all three
+        #    cases __file__ is set to the script's path)
+        if file_in_globals and os.path.isfile(file_in_globals):
+            full_path = os.path.abspath(file_in_globals)
+            return {
+                "kind": "script",
+                "label": "Python script (.py)",
+                "name": os.path.basename(full_path),
+                "directory": os.path.dirname(full_path),
+                "full_path": full_path,
+            }
+
+        ip = RuntimeLocation._get_ipython_instance()
+
+        if ip is not None:
+            shell_name = ip.__class__.__name__
+
+            if shell_name == "ZMQInteractiveShell":
+                # 2) Notebook opened inside VSCode
+                vsc_path = RuntimeLocation._vscode_notebook_file(ip)
+                if vsc_path:
+                    full_path = os.path.abspath(vsc_path)
+                    return {
+                        "kind": "vscode_notebook",
+                        "label": "Jupyter notebook in VSCode",
+                        "name": os.path.basename(full_path),
+                        "directory": os.path.dirname(full_path),
+                        "full_path": full_path,
+                    }
+
+                # Both Spyder's console and Jupyter notebooks use this same kernel shell class
+                if RuntimeLocation._is_spyder_console():
+                    return {
+                        "kind": "spyder_console",
+                        "label": "Spyder interactive console",
+                        "name": "Spyder Console",
+                        "directory": os.getcwd(),
+                        "full_path": None,
+                    }
+
+                nb_path = RuntimeLocation._classic_jupyter_notebook_path()
+                if nb_path:
+                    full_path = os.path.abspath(nb_path)
+                    return {
+                        "kind": "jupyter",
+                        "label": "Jupyter notebook (Notebook/Lab)",
+                        "name": os.path.basename(full_path),
+                        "directory": os.path.dirname(full_path),
+                        "full_path": full_path,
+                    }
+                return {
+                    "kind": "jupyter",
+                    "label": "Jupyter notebook (exact path not found)",
+                    "name": "Unknown Notebook",
+                    "directory": os.getcwd(),
+                    "full_path": None,
+                }
+
+            if shell_name == "TerminalInteractiveShell":
+                return {
+                    "kind": "terminal_ipython",
+                    "label": "Terminal (IPython)",
+                    "name": "Terminal (IPython)",
+                    "directory": os.getcwd(),
+                    "full_path": None,
+                }
+
+        # 3) Plain Python terminal (simple REPL, no IPython)
+        return {
+            "kind": "terminal_python",
+            "label": "Terminal (Python REPL)",
+            "name": "Terminal (Python)",
+            "directory": os.getcwd(),
+            "full_path": None,
+        }
+
+    @staticmethod
+    def log_location():
+        """
+        Return a ready-to-use string for inserting into a log line.
+        Call this directly anywhere in your code:
+
+            from runtime_location import RuntimeLocation
+            print(f"{RuntimeLocation.log_location()} your log message")
+
+            # or with the logging module:
+            logging.info(f"{RuntimeLocation.log_location()} your log message")
+        """
+        info = RuntimeLocation.get_caller_info(_offset=1)  # look one frame up: the real caller of log_location
+        if info["full_path"]:
+            return f"[{info['label']} | {info['name']} | {info['directory']}]"
+        return f"[{info['label']} | {info['directory']}]"
 
 
 class EnvironmentInfo:
