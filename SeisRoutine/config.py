@@ -5,6 +5,9 @@ import os
 import sys
 import yaml
 import coloredlogs
+import platform
+import subprocess
+from importlib.metadata import distributions
 
 
 class Config:
@@ -170,3 +173,220 @@ def get_running_file_info():
             file_path = Path(ipynbname.path()).resolve()
 
         return file_path
+
+
+class EnvironmentInfo:
+    """
+    Collect information about the current execution environment.
+    """
+
+    def __init__(self):
+
+        self._installed_packages = None
+        self._imported_packages = None
+
+    @staticmethod
+    def system():
+        """
+        Return system and Python information.
+        """
+
+        return {
+            "python_version": platform.python_version(),
+            "python_implementation": platform.python_implementation(),
+            "platform": platform.platform(),
+            "machine": platform.machine(),
+            "processor": platform.processor(),
+            "executable": sys.executable,
+            "conda_env": os.environ.get("CONDA_DEFAULT_ENV"),
+            "virtual_env": os.environ.get("VIRTUAL_ENV"),
+        }
+
+    @staticmethod
+    def git_commit():
+        """
+        Return current Git commit hash.
+        """
+
+        try:
+            return subprocess.check_output(
+                ["git", "rev-parse", "HEAD"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            ).strip()
+
+        except Exception:
+            return None
+
+    def installed_packages(self):
+        """
+        Return all installed packages.
+        """
+
+        if self._installed_packages is None:
+
+            self._installed_packages = {
+                dist.metadata["Name"]: dist.version
+                for dist in distributions()
+                if dist.metadata.get("Name")
+            }
+
+        return dict(sorted(self._installed_packages.items()))
+
+    def imported_packages(self):
+        """
+        Return only packages corresponding to imported modules.
+        """
+
+        if self._imported_packages is not None:
+            return self._imported_packages
+
+        imported_modules = {
+            name.split(".")[0]
+            for name in sys.modules
+        }
+
+        packages = {}
+
+        for dist in distributions():
+
+            package_name = dist.metadata.get("Name")
+
+            if not package_name:
+                continue
+
+            try:
+
+                top_level = dist.read_text("top_level.txt")
+
+                if not top_level:
+                    continue
+
+                module_names = {
+                    line.strip()
+                    for line in top_level.splitlines()
+                    if line.strip()
+                }
+
+                if imported_modules.intersection(module_names):
+                    packages[package_name] = dist.version
+
+            except Exception:
+                continue
+
+        self._imported_packages = dict(sorted(packages.items()))
+
+        return self._imported_packages
+
+    def pip_freeze(self):
+        """
+        Return pip freeze output.
+        """
+
+        try:
+
+            return subprocess.check_output(
+                [sys.executable, "-m", "pip", "freeze"],
+                text=True,
+            )
+
+        except Exception:
+
+            return None
+
+    def report(
+        self,
+        packages="imported",
+        include_git=True,
+        include_freeze=False,
+    ):
+        """
+        Generate a formatted environment report.
+
+        Parameters
+        ----------
+        packages : {"imported", "all", None}
+            Package listing mode.
+
+        include_git : bool
+            Include Git commit hash.
+
+        include_freeze : bool
+            Include pip freeze output.
+        """
+
+        lines = []
+
+        lines.append("=" * 80)
+        lines.append("Execution Environment")
+        lines.append("=" * 80)
+
+        for key, value in self.system().items():
+            lines.append(f"{key:24s}: {value}")
+
+        if include_git:
+
+            git_hash = self.git_commit()
+
+            if git_hash:
+                lines.append(f"{'git_commit':24s}: {git_hash}")
+
+        if packages is not None:
+
+            if packages == "imported":
+
+                title = "Imported Packages"
+                pkg_dict = self.imported_packages()
+
+            elif packages == "all":
+
+                title = "Installed Packages"
+                pkg_dict = self.installed_packages()
+
+            else:
+
+                raise ValueError(
+                    "packages must be 'imported', 'all', or None"
+                )
+
+            lines.append("")
+            lines.append("=" * 80)
+            lines.append(title)
+            lines.append("=" * 80)
+
+            for name, version in pkg_dict.items():
+                lines.append(f"{name}=={version}")
+
+        if include_freeze:
+
+            freeze = self.pip_freeze()
+
+            if freeze:
+
+                lines.append("")
+                lines.append("=" * 80)
+                lines.append("pip freeze")
+                lines.append("=" * 80)
+
+                lines.append(freeze)
+
+        return "\n".join(lines)
+
+    def log(
+        self,
+        logger,
+        packages="imported",
+        include_git=True,
+        include_freeze=False,
+    ):
+        """
+        Write environment report to logger.
+        """
+
+        logger.info(
+            self.report(
+                packages=packages,
+                include_git=include_git,
+                include_freeze=include_freeze,
+            )
+        )
