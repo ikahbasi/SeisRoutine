@@ -3,7 +3,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Sequence
+from typing import List, Sequence, Optional, Tuple
+import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 
 class Domain(str, Enum):
@@ -282,6 +284,790 @@ class InstrumentResponse:
             results.append(num / den if den != 0 else complex(float("inf")))
 
         return results
+
+    # ------------------------------------------------------------------
+    # Frequency response plot
+    # ------------------------------------------------------------------
+
+    def plot_response(
+        self,
+        freq_min: Optional[float] = None,
+        freq_max: Optional[float] = None,
+        n_points: int = 1000,
+        show: bool = True,
+        save_path: Optional[str] = None,
+        figsize: Tuple[float, float] = (10, 7),
+    ) -> None:
+        """
+        Plot the amplitude and phase response of the instrument.
+
+        Both panels share a **logarithmic frequency axis**.  Frequencies
+        are always displayed in Hz regardless of the stored domain, so
+        the plot is domain-independent and directly comparable across
+        instruments.
+
+        Layout
+        ------
+        * **Top panel** — Amplitude |H(f)|  in dB  (20·log10|H|)
+        * **Bottom panel** — Phase ∠H(f)  in degrees, unwrapped
+
+        Annotations
+        -----------
+        * Vertical dashed line at the normalization frequency (f_ref).
+        * Pole/zero positions projected onto the frequency axis as
+          rug marks (triangles for poles, circles for zeros), using
+          their imaginary parts (natural frequencies).
+        * Corner frequency (−3 dB point) detected automatically and
+          annotated if found in the plotted range.
+
+        Parameters
+        ----------
+        freq_min : float, optional
+            Lower frequency bound in Hz.  Defaults to
+            ``max(1e-4, |imag(pole_min)| / (2π * 100))`` so that the
+            flat passband and roll-off are always visible.
+        freq_max : float, optional
+            Upper frequency bound in Hz.  Defaults to
+            ``min(500, |imag(pole_max)| * 10 / (2π))`` clipped to the
+            Nyquist of a 1000 sps instrument.
+        n_points : int
+            Number of frequency samples (default 1000, log-spaced).
+        show : bool
+            If ``True`` (default) call ``plt.show()`` after plotting.
+        save_path : str, optional
+            If provided, save the figure to this path before showing
+            (e.g. ``"response_BHZ.png"``).  Any format supported by
+            Matplotlib is accepted.
+        figsize : tuple of float
+            Figure size in inches as ``(width, height)`` (default 10×7).
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ImportError
+            If Matplotlib is not installed.
+
+        Examples
+        --------
+        >>> resp.plot_response(freq_min=1e-3, freq_max=50, show=True)
+        >>> resp.plot_response(save_path="STS2_BHZ.pdf", show=False)
+        """
+        try:
+            import matplotlib.pyplot as plt
+            import matplotlib.ticker as ticker
+            import numpy as np
+        except ImportError as exc:
+            raise ImportError(
+                "Matplotlib and NumPy are required for plot_response(). "
+                "Install them with:  pip install matplotlib numpy"
+            ) from exc
+
+        # ----------------------------------------------------------------
+        # Work in Hz domain internally so the plot is always in Hz
+        # ----------------------------------------------------------------
+        resp_hz = self.to_hz()
+
+        # ----------------------------------------------------------------
+        # Determine frequency axis bounds (in Hz)
+        # ----------------------------------------------------------------
+        pole_freqs_hz = [abs(p.imag) for p in resp_hz.poles if abs(p.imag) > 0]
+        zero_freqs_hz = [abs(z.imag) for z in resp_hz.zeros if abs(z.imag) > 0]
+
+        if freq_min is None:
+            low = min(pole_freqs_hz, default=1e-3) / 100.0
+            freq_min = max(low, 1e-4)
+
+        if freq_max is None:
+            high = max(pole_freqs_hz, default=50.0) * 10.0
+            freq_max = min(high, 500.0)
+
+        # Log-spaced frequency array (Hz)
+        freqs_hz = np.logspace(
+            math.log10(freq_min), math.log10(freq_max), n_points
+        )
+
+        # ----------------------------------------------------------------
+        # Evaluate transfer function H(f) — input to evaluate() is in Hz
+        # ----------------------------------------------------------------
+        H = np.array(resp_hz.evaluate(freqs_hz.tolist()))
+
+        amplitude_db  = 20.0 * np.log10(np.abs(H) + 1e-300)
+        phase_deg_raw = np.angle(H, deg=True)
+        phase_deg     = np.unwrap(phase_deg_raw, period=360.0)
+
+        # ----------------------------------------------------------------
+        # Reference frequency (in Hz)
+        # ----------------------------------------------------------------
+        f_ref_hz = resp_hz.normalization_frequency
+
+        # ----------------------------------------------------------------
+        # Find −3 dB corner frequency
+        # ----------------------------------------------------------------
+        passband_db   = np.max(amplitude_db)
+        corner_mask   = amplitude_db >= (passband_db - 3.0)
+        corner_freq_hz: Optional[float] = None
+        if corner_mask.any():
+            idx = int(np.argmax(corner_mask))   # first index above −3 dB
+            if idx > 0:
+                corner_freq_hz = float(freqs_hz[idx])
+
+        # ----------------------------------------------------------------
+        # Figure layout
+        # ----------------------------------------------------------------
+        fig, (ax_amp, ax_phs) = plt.subplots(
+            2, 1, figsize=figsize, sharex=True,
+            gridspec_kw={"height_ratios": [3, 2], "hspace": 0.08},
+        )
+
+        title = (
+            f"Instrument Response  —  {self.channel}"
+            if self.channel else "Instrument Response"
+        )
+        fig.suptitle(title, fontsize=13, fontweight="bold", y=0.98)
+
+        # ── colour palette ──────────────────────────────────────────────
+        C_AMP   = "#2166ac"   # blue  — amplitude
+        C_PHASE = "#d6604d"   # red   — phase
+        C_REF   = "#4d9221"   # green — reference / annotations
+        C_POLE  = "#762a83"   # purple — poles
+        C_ZERO  = "#e08214"   # orange — zeros
+        C_CORN  = "#b2182b"   # dark red — corner
+
+        # ================================================================
+        # Top panel: Amplitude
+        # ================================================================
+        ax_amp.semilogx(freqs_hz, amplitude_db, color=C_AMP, linewidth=2.0,
+                        label="Amplitude |H(f)|")
+        ax_amp.set_ylabel("Amplitude  [dB]", fontsize=11)
+        ax_amp.grid(True, which="both", linestyle="--", linewidth=0.5,
+                    alpha=0.6)
+        ax_amp.yaxis.set_minor_locator(ticker.AutoMinorLocator(5))
+
+        # Reference frequency line
+        ax_amp.axvline(f_ref_hz, color=C_REF, linestyle=":", linewidth=1.5,
+                       label=f"f_ref = {f_ref_hz:.4g} Hz")
+
+        # −3 dB corner annotation
+        if corner_freq_hz is not None and freq_min < corner_freq_hz < freq_max:
+            ax_amp.axvline(corner_freq_hz, color=C_CORN, linestyle="--",
+                           linewidth=1.2, alpha=0.8)
+            ax_amp.axhline(passband_db - 3.0, color=C_CORN, linestyle="--",
+                           linewidth=0.8, alpha=0.6)
+            ax_amp.annotate(
+                f"−3 dB\n{corner_freq_hz:.3g} Hz",
+                xy=(corner_freq_hz, passband_db - 3.0),
+                xytext=(corner_freq_hz * 3, passband_db - 12),
+                fontsize=8, color=C_CORN,
+                arrowprops=dict(arrowstyle="->", color=C_CORN, lw=0.8),
+            )
+
+        # Rug marks for poles and zeros (imaginary parts = natural freqs)
+        y_rug = ax_amp.get_ylim()[0]
+        for pf in pole_freqs_hz:
+            if freq_min <= pf <= freq_max:
+                ax_amp.plot(pf, y_rug, "v", color=C_POLE, markersize=7,
+                            clip_on=False, zorder=5)
+        for zf in zero_freqs_hz:
+            if freq_min <= zf <= freq_max:
+                ax_amp.plot(zf, y_rug, "o", color=C_ZERO, markersize=6,
+                            clip_on=False, zorder=5)
+
+        # Legend entries for rug marks
+        from matplotlib.lines import Line2D
+        legend_handles = [
+            Line2D([0], [0], color=C_AMP,  linewidth=2,   label="Amplitude |H(f)|"),
+            Line2D([0], [0], color=C_REF,  linestyle=":", label=f"f_ref = {f_ref_hz:.4g} Hz"),
+            Line2D([0], [0], marker="v", color=C_POLE, linestyle="None",
+                   markersize=7, label="Poles (|Im| in Hz)"),
+            Line2D([0], [0], marker="o", color=C_ZERO, linestyle="None",
+                   markersize=6, label="Zeros (|Im| in Hz)"),
+        ]
+        ax_amp.legend(handles=legend_handles, fontsize=8, loc="lower right")
+
+        # ================================================================
+        # Bottom panel: Phase
+        # ================================================================
+        ax_phs.semilogx(freqs_hz, phase_deg, color=C_PHASE, linewidth=2.0,
+                        label="Phase ∠H(f)")
+        ax_phs.axvline(f_ref_hz, color=C_REF, linestyle=":", linewidth=1.5)
+        ax_phs.set_xlabel("Frequency  [Hz]", fontsize=11)
+        ax_phs.set_ylabel("Phase  [°]", fontsize=11)
+        ax_phs.grid(True, which="both", linestyle="--", linewidth=0.5,
+                    alpha=0.6)
+        ax_phs.yaxis.set_major_locator(ticker.MultipleLocator(45))
+        ax_phs.yaxis.set_minor_locator(ticker.AutoMinorLocator(3))
+        ax_phs.legend(fontsize=8, loc="lower right")
+
+        # ----------------------------------------------------------------
+        # Shared x-axis limits
+        # ----------------------------------------------------------------
+        ax_amp.set_xlim(freq_min, freq_max)
+
+        # ----------------------------------------------------------------
+        # Info text box (sensitivity + domain)
+        # ----------------------------------------------------------------
+        info = (
+            f"Sensitivity : {self.sensitivity:.4g}\n"
+            f"A\u2080          : {self.normalization_factor:.4g}\n"
+            f"Domain      : {self.domain.unit_label()}\n"
+            f"Poles / Zeros : {self.n_poles} / {self.n_zeros}"
+        )
+        ax_amp.text(
+            0.01, 0.97, info,
+            transform=ax_amp.transAxes,
+            fontsize=7.5, verticalalignment="top",
+            fontfamily="monospace",
+            bbox=dict(boxstyle="round,pad=0.4", facecolor="white",
+                      edgecolor="gray", alpha=0.8),
+        )
+
+        plt.tight_layout(rect=[0, 0, 1, 0.97])
+
+        if save_path:
+            fig.savefig(save_path, dpi=150, bbox_inches="tight")
+            print(f"Figure saved → {save_path}")
+
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+
+    # ------------------------------------------------------------------
+    # Group delay
+    # ------------------------------------------------------------------
+
+    def group_delay(self, frequencies: Sequence[float]) -> List[float]:
+        """
+        Compute the group delay τ(f) = −dφ/dω at the given frequencies.
+
+        Group delay is estimated numerically using a central-difference
+        derivative of the unwrapped phase:
+
+        .. code-block:: text
+
+            τ(f) = −dφ/dω  ≈  −Δφ / (2π · Δf)   [seconds]
+
+        The result array has the same length as *frequencies*; the two
+        boundary samples are computed with a one-sided difference.
+
+        Parameters
+        ----------
+        frequencies : sequence of float
+            Frequencies in the **same domain** as poles/zeros (rad/s or Hz).
+
+        Returns
+        -------
+        list of float
+            Group delay values in seconds.
+        """
+        import numpy as np
+
+        freqs = np.asarray(frequencies, dtype=float)
+        H     = np.array(self.evaluate(freqs.tolist()))
+        phase = np.unwrap(np.angle(H))   # radians, unwrapped
+
+        # Angular frequency ω = 2π·f  (works for both domains via evaluate)
+        omega = 2.0 * math.pi * freqs
+
+        # Central differences for interior points, one-sided at edges
+        dphi  = np.gradient(phase, omega)
+        return (-dphi).tolist()
+
+    # ------------------------------------------------------------------
+    # Pole-zero map
+    # ------------------------------------------------------------------
+
+    def plot_pole_zero(
+        self,
+        show: bool = True,
+        save_path: Optional[str] = None,
+        figsize: Tuple[float, float] = (6, 6),
+        ax=None,
+    ):
+        """
+        Draw the pole-zero map in the complex s-plane.
+
+        Poles are shown as ``×`` markers and zeros as ``○`` markers.
+        Conjugate pairs are connected with a thin dashed line.
+        The imaginary axis (jω) and real axis are drawn as reference lines.
+        A unit circle is overlaid for orientation.
+
+        The plot uses the domain stored in the object (rad/s or Hz).
+        Axis labels reflect the current domain unit.
+
+        Parameters
+        ----------
+        show : bool
+            Call ``plt.show()`` after plotting (default ``True``).
+        save_path : str, optional
+            File path to save the figure (e.g. ``"pz_map.png"``).
+        figsize : tuple of float
+            Figure size in inches (used only when *ax* is ``None``).
+        ax : matplotlib.axes.Axes, optional
+            Axes to draw into.  If ``None`` a new figure is created.
+            When an axes is supplied, *show* and *save_path* are ignored
+            (caller controls the figure lifecycle).
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The axes that was drawn into.
+        """
+        try:
+            import matplotlib.pyplot as plt
+            import matplotlib.patches as mpatches
+            import numpy as np
+        except ImportError as exc:
+            raise ImportError(
+                "Matplotlib is required for plot_pole_zero(). "
+                "Install with:  pip install matplotlib"
+            ) from exc
+
+        standalone = ax is None
+        if standalone:
+            fig, ax = plt.subplots(figsize=figsize)
+            title = (
+                f"Pole-Zero Map  —  {self.channel}"
+                if self.channel else "Pole-Zero Map"
+            )
+            fig.suptitle(title, fontsize=12, fontweight="bold")
+
+        unit = self.domain.unit_label()
+
+        # ── colour palette ───────────────────────────────────────────────
+        C_POLE  = "#762a83"
+        C_ZERO  = "#e08214"
+        C_AXIS  = "#555555"
+
+        # ── reference lines ──────────────────────────────────────────────
+        ax.axhline(0, color=C_AXIS, linewidth=0.8, zorder=1)
+        ax.axvline(0, color=C_AXIS, linewidth=0.8, zorder=1)
+
+        # ── unit circle (cosmetic reference) ─────────────────────────────
+        theta = np.linspace(0, 2 * math.pi, 360)
+        # scale unit circle to the order-of-magnitude of poles
+        all_pts = [abs(p) for p in self.poles] + [abs(z) for z in self.zeros
+                                                   if abs(z) > 1e-12]
+        r_ref = np.median(all_pts) if all_pts else 1.0
+        ax.plot(r_ref * np.cos(theta), r_ref * np.sin(theta),
+                color="#aaaaaa", linewidth=0.6, linestyle="--",
+                zorder=1, label=f"|s| = {r_ref:.3g}")
+
+        def _connect_conjugates(pts, color):
+            """Draw thin lines between conjugate pairs."""
+            used = set()
+            for i, p in enumerate(pts):
+                if i in used:
+                    continue
+                for j, q in enumerate(pts):
+                    if j <= i or j in used:
+                        continue
+                    if abs(p.real - q.real) < 1e-10 and abs(p.imag + q.imag) < 1e-10:
+                        ax.plot([p.real, q.real], [p.imag, q.imag],
+                                color=color, linewidth=0.7,
+                                linestyle="--", alpha=0.5, zorder=2)
+                        used.update([i, j])
+                        break
+
+        # ── poles ────────────────────────────────────────────────────────
+        _connect_conjugates(self.poles, C_POLE)
+        for p in self.poles:
+            ax.plot(p.real, p.imag, "x", color=C_POLE,
+                    markersize=11, markeredgewidth=2.2, zorder=4)
+            ax.annotate(
+                f"  ({p.real:.3g}{p.imag:+.3g}j)",
+                xy=(p.real, p.imag), fontsize=6.5, color=C_POLE,
+                va="center",
+            )
+
+        # ── zeros ────────────────────────────────────────────────────────
+        _connect_conjugates(self.zeros, C_ZERO)
+        for z in self.zeros:
+            ax.plot(z.real, z.imag, "o", color=C_ZERO,
+                    markersize=9, markerfacecolor="none",
+                    markeredgewidth=2.0, zorder=4)
+            if abs(z) > 1e-12:                     # skip origin labels
+                ax.annotate(
+                    f"  ({z.real:.3g}{z.imag:+.3g}j)",
+                    xy=(z.real, z.imag), fontsize=6.5, color=C_ZERO,
+                    va="center",
+                )
+
+        # ── legend ───────────────────────────────────────────────────────
+        legend_handles = [
+            plt.Line2D([0], [0], marker="x", color=C_POLE, linestyle="None",
+                       markersize=9, markeredgewidth=2, label=f"Poles  (n={self.n_poles})"),
+            plt.Line2D([0], [0], marker="o", color=C_ZERO, linestyle="None",
+                       markersize=8, markerfacecolor="none",
+                       markeredgewidth=2, label=f"Zeros  (n={self.n_zeros})"),
+        ]
+        ax.legend(handles=legend_handles, fontsize=8, loc="upper right")
+
+        ax.set_xlabel(f"Real  [{unit}]", fontsize=10)
+        ax.set_ylabel(f"Imaginary  [{unit}]", fontsize=10)
+        ax.grid(True, linestyle="--", linewidth=0.4, alpha=0.5)
+        ax.set_aspect("equal", adjustable="datalim")
+
+        if standalone:
+            plt.tight_layout(rect=[0, 0, 1, 0.96])
+            if save_path:
+                fig.savefig(save_path, dpi=150, bbox_inches="tight")
+                print(f"Figure saved → {save_path}")
+            if show:
+                plt.show()
+            else:
+                plt.close(fig)
+
+        return ax
+
+    # ------------------------------------------------------------------
+    # Group delay plot
+    # ------------------------------------------------------------------
+
+    def plot_group_delay(
+        self,
+        freq_min: Optional[float] = None,
+        freq_max: Optional[float] = None,
+        n_points: int = 1000,
+        show: bool = True,
+        save_path: Optional[str] = None,
+        figsize: Tuple[float, float] = (9, 4),
+        ax=None,
+    ):
+        """
+        Plot group delay τ(f) = −dφ/dω as a function of frequency.
+
+        The frequency axis is **logarithmic** and always displayed in Hz.
+        Group delay is shown in seconds.
+
+        A horizontal dashed line marks zero delay and a vertical dashed
+        line marks the reference frequency f_ref.
+
+        Parameters
+        ----------
+        freq_min : float, optional
+            Lower bound in Hz (auto-detected from poles if omitted).
+        freq_max : float, optional
+            Upper bound in Hz (auto-detected from poles if omitted).
+        n_points : int
+            Number of log-spaced frequency samples (default 1000).
+        show : bool
+            Call ``plt.show()`` after plotting (default ``True``).
+        save_path : str, optional
+            File path to save the figure.
+        figsize : tuple of float
+            Figure size in inches (used only when *ax* is ``None``).
+        ax : matplotlib.axes.Axes, optional
+            Axes to draw into.  When provided *show* and *save_path*
+            are ignored.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The axes that was drawn into.
+        """
+        try:
+            import matplotlib.pyplot as plt
+            import matplotlib.ticker as ticker
+            import numpy as np
+        except ImportError as exc:
+            raise ImportError(
+                "Matplotlib and NumPy are required for plot_group_delay(). "
+                "Install with:  pip install matplotlib numpy"
+            ) from exc
+
+        # Always work in Hz
+        resp_hz = self.to_hz()
+
+        # ── frequency bounds ─────────────────────────────────────────────
+        pole_freqs_hz = [abs(p.imag) for p in resp_hz.poles if abs(p.imag) > 0]
+
+        if freq_min is None:
+            freq_min = max(min(pole_freqs_hz, default=1e-3) / 100.0, 1e-4)
+        if freq_max is None:
+            freq_max = min(max(pole_freqs_hz, default=50.0) * 10.0, 500.0)
+
+        freqs_hz = np.logspace(
+            math.log10(freq_min), math.log10(freq_max), n_points
+        )
+
+        gd = np.array(resp_hz.group_delay(freqs_hz.tolist()))
+
+        # ── figure ───────────────────────────────────────────────────────
+        standalone = ax is None
+        if standalone:
+            fig, ax = plt.subplots(figsize=figsize)
+            title = (
+                f"Group Delay  —  {self.channel}"
+                if self.channel else "Group Delay"
+            )
+            fig.suptitle(title, fontsize=12, fontweight="bold")
+
+        C_GD  = "#1a7837"
+        C_REF = "#4d9221"
+
+        ax.semilogx(freqs_hz, gd, color=C_GD, linewidth=2.0,
+                    label="Group delay τ(f)")
+        ax.axhline(0, color="#aaaaaa", linewidth=0.8, linestyle="--")
+        ax.axvline(resp_hz.normalization_frequency,
+                   color=C_REF, linewidth=1.4, linestyle=":",
+                   label=f"f_ref = {resp_hz.normalization_frequency:.4g} Hz")
+
+        ax.set_xlabel("Frequency  [Hz]", fontsize=10)
+        ax.set_ylabel("Group Delay  [s]", fontsize=10)
+        ax.grid(True, which="both", linestyle="--", linewidth=0.5, alpha=0.6)
+        ax.yaxis.set_minor_locator(ticker.AutoMinorLocator(5))
+        ax.set_xlim(freq_min, freq_max)
+        ax.legend(fontsize=8, loc="upper right")
+
+        if standalone:
+            plt.tight_layout(rect=[0, 0, 1, 0.96])
+            if save_path:
+                fig.savefig(save_path, dpi=150, bbox_inches="tight")
+                print(f"Figure saved → {save_path}")
+            if show:
+                plt.show()
+            else:
+                plt.close(fig)
+
+        return ax
+
+    # ------------------------------------------------------------------
+    # Combined four-panel dashboard
+    # ------------------------------------------------------------------
+
+    def plot_all(
+        self,
+        freq_min: Optional[float] = None,
+        freq_max: Optional[float] = None,
+        n_points: int = 1000,
+        show: bool = True,
+        save_path: Optional[str] = None,
+        figsize: Tuple[float, float] = (14, 10),
+    ) -> None:
+        """
+        Render a four-panel analysis dashboard in a single figure:
+
+        .. code-block:: text
+
+            ┌─────────────────────┬─────────────────────┐
+            │  Amplitude [dB]     │  Pole-Zero Map      │
+            ├─────────────────────┼─────────────────────┤
+            │  Phase [°]          │  Group Delay [s]    │
+            └─────────────────────┴─────────────────────┘
+
+        This is a convenience wrapper that calls :meth:`plot_response`,
+        :meth:`plot_pole_zero`, and :meth:`plot_group_delay` and places
+        their output into a shared GridSpec layout.
+
+        Parameters
+        ----------
+        freq_min : float, optional
+            Lower frequency bound in Hz for the spectral panels.
+        freq_max : float, optional
+            Upper frequency bound in Hz for the spectral panels.
+        n_points : int
+            Number of frequency samples (default 1000).
+        show : bool
+            Call ``plt.show()`` after plotting (default ``True``).
+        save_path : str, optional
+            File path to save the combined figure.
+        figsize : tuple of float
+            Figure size in inches (default 14×10).
+
+        Returns
+        -------
+        None
+        """
+        try:
+            import matplotlib.pyplot as plt
+            import matplotlib.gridspec as gridspec
+            import matplotlib.ticker as ticker
+            import numpy as np
+        except ImportError as exc:
+            raise ImportError(
+                "Matplotlib and NumPy are required for plot_all(). "
+                "Install with:  pip install matplotlib numpy"
+            ) from exc
+
+        resp_hz = self.to_hz()
+
+        # ── frequency bounds ─────────────────────────────────────────────
+        pole_freqs_hz = [abs(p.imag) for p in resp_hz.poles if abs(p.imag) > 0]
+
+        if freq_min is None:
+            freq_min = max(min(pole_freqs_hz, default=1e-3) / 100.0, 1e-4)
+        if freq_max is None:
+            freq_max = min(max(pole_freqs_hz, default=50.0) * 10.0, 500.0)
+
+        # ── compute spectra ──────────────────────────────────────────────
+        freqs_hz = np.logspace(
+            math.log10(freq_min), math.log10(freq_max), n_points
+        )
+        H             = np.array(resp_hz.evaluate(freqs_hz.tolist()))
+        amplitude_db  = 20.0 * np.log10(np.abs(H) + 1e-300)
+        phase_deg     = np.unwrap(np.angle(H, deg=True), period=360.0)
+        gd            = np.array(resp_hz.group_delay(freqs_hz.tolist()))
+        f_ref_hz      = resp_hz.normalization_frequency
+
+        # ── colour palette ───────────────────────────────────────────────
+        C_AMP   = "#2166ac"
+        C_PHASE = "#d6604d"
+        C_GD    = "#1a7837"
+        C_REF   = "#4d9221"
+        C_CORN  = "#b2182b"
+        C_POLE  = "#762a83"
+        C_ZERO  = "#e08214"
+
+        # ── layout ───────────────────────────────────────────────────────
+        fig = plt.figure(figsize=figsize)
+        title = (
+            f"Instrument Response Dashboard  —  {self.channel}"
+            if self.channel else "Instrument Response Dashboard"
+        )
+        fig.suptitle(title, fontsize=14, fontweight="bold", y=0.99)
+
+        # gs = gridspec.GridSpec(
+        #     2, 2, figure=fig,
+        #     hspace=0.38, wspace=0.32,
+        #     left=0.08, right=0.97, top=0.94, bottom=0.07,
+        # )
+
+        gs = gridspec.GridSpec(
+            3, 2,
+            width_ratios=[3, 1],
+            height_ratios=[2, 1.2, 1],
+            hspace=0.08, wspace=0.02,
+            left=0.08, right=0.93, top=0.93, bottom=0.08
+        )
+        ax_amp  = fig.add_subplot(gs[0, 0])
+        ax_phs  = fig.add_subplot(gs[1, 0], sharex=ax_amp)
+        ax_gd   = fig.add_subplot(gs[2, 0], sharex=ax_amp)
+        ax_pz   = fig.add_subplot(gs[:, 1])
+
+        ax_amp.tick_params(axis="x", which="both", bottom=True, labelbottom=False)
+        ax_phs.tick_params(axis="x", which="both", bottom=True, labelbottom=False)
+
+        ax_pz.yaxis.tick_right()
+        ax_pz.yaxis.set_label_position("right")
+
+        # ax_amp = fig.add_subplot(gs[0, 0])
+        # ax_phs = fig.add_subplot(gs[1, 0], sharex=ax_amp)
+        # ax_gd  = fig.add_subplot(gs[2, 0], sharex=ax_amp)
+        # ax_pz  = fig.add_subplot(gs[0, 1])
+        
+
+        # ── −3 dB corner ─────────────────────────────────────────────────
+        passband_db    = float(np.max(amplitude_db))
+        corner_mask    = amplitude_db >= (passband_db - 3.0)
+        corner_freq_hz: Optional[float] = None
+        if corner_mask.any():
+            idx = int(np.argmax(corner_mask))
+            if idx > 0:
+                corner_freq_hz = float(freqs_hz[idx])
+
+        # ════════════════════════════════════════════════════════════════
+        # Panel Amplitude
+        # ════════════════════════════════════════════════════════════════
+        ax_amp.semilogx(freqs_hz, amplitude_db, color=C_AMP, linewidth=1.8)
+        ax_amp.axvline(f_ref_hz, color=C_REF, linestyle=":", linewidth=1.4,
+                       label=f"f_ref = {f_ref_hz:.4g} Hz")
+        ax_amp.set_ylabel("Amplitude  [dB]", fontsize=10)
+        # ax_amp.set_title("Amplitude Response", fontsize=10, fontweight="bold")
+        ax_amp.grid(True, which="both", linestyle="--", linewidth=0.4, alpha=0.6)
+
+        if corner_freq_hz and freq_min < corner_freq_hz < freq_max:
+            ax_amp.axvline(corner_freq_hz, color=C_CORN, linestyle="--",
+                           linewidth=1.0, alpha=0.8)
+            ax_amp.axhline(passband_db - 3.0, color=C_CORN, linestyle="--",
+                           linewidth=0.7, alpha=0.6)
+            ax_amp.annotate(
+                f"−3 dB\n{corner_freq_hz:.3g} Hz",
+                xy=(corner_freq_hz, passband_db - 3.0),
+                xytext=(corner_freq_hz * 4, passband_db - 14),
+                fontsize=7, color=C_CORN,
+                arrowprops=dict(arrowstyle="->", color=C_CORN, lw=0.7),
+            )
+
+        # Rug marks
+        pole_freqs = [abs(p.imag) for p in resp_hz.poles if abs(p.imag) > 0]
+        zero_freqs = [abs(z.imag) for z in resp_hz.zeros if abs(z.imag) > 0]
+        y_rug = float(np.min(amplitude_db))
+        for pf in pole_freqs:
+            if freq_min <= pf <= freq_max:
+                ax_amp.plot(pf, y_rug, "v", color=C_POLE, ms=6, clip_on=False)
+        for zf in zero_freqs:
+            if freq_min <= zf <= freq_max:
+                ax_amp.plot(zf, y_rug, "o", color=C_ZERO, ms=5, clip_on=False)
+
+        from matplotlib.lines import Line2D
+        ax_amp.legend(handles=[
+            Line2D([0], [0], color=C_REF,  linestyle=":", label=f"f_ref = {f_ref_hz:.4g} Hz"),
+            Line2D([0], [0], marker="v", color=C_POLE, linestyle="None", ms=6, label="Poles"),
+            Line2D([0], [0], marker="o", color=C_ZERO, linestyle="None", ms=5, label="Zeros"),
+        ], fontsize=7, loc="lower right")
+        ax_amp.set_xlim(freq_min, freq_max)
+
+        # ════════════════════════════════════════════════════════════════
+        # Panel Phase
+        # ════════════════════════════════════════════════════════════════
+        ax_phs.semilogx(freqs_hz, phase_deg, color=C_PHASE, linewidth=1.8)
+        ax_phs.axvline(f_ref_hz, color=C_REF, linestyle=":", linewidth=1.4)
+        # ax_phs.set_xlabel("Frequency  [Hz]", fontsize=10)
+        ax_phs.set_ylabel("Phase  [°]", fontsize=10)
+        # ax_phs.set_title("Phase Response", fontsize=10, fontweight="bold")
+        ax_phs.grid(True, which="both", linestyle="--", linewidth=0.4, alpha=0.6)
+        ax_phs.yaxis.set_major_locator(ticker.MultipleLocator(45))
+        ax_phs.set_xlim(freq_min, freq_max)
+
+        # ════════════════════════════════════════════════════════════════
+        # Panel Pole-Zero Map  (reuse the method)
+        # ════════════════════════════════════════════════════════════════
+        self.plot_pole_zero(ax=ax_pz, show=False)
+        # ax_pz.set_title("Pole-Zero Map", fontsize=10, fontweight="bold")
+
+        # ════════════════════════════════════════════════════════════════
+        # Panel Group Delay
+        # ════════════════════════════════════════════════════════════════
+        ax_gd.semilogx(freqs_hz, gd, color=C_GD, linewidth=1.8,
+                       label="Group delay τ(f)")
+        ax_gd.axhline(0, color="#aaaaaa", linewidth=0.8, linestyle="--")
+        ax_gd.axvline(f_ref_hz, color=C_REF, linestyle=":", linewidth=1.4,
+                      label=f"f_ref = {f_ref_hz:.4g} Hz")
+        ax_gd.set_xlabel("Frequency  [Hz]", fontsize=10)
+        ax_gd.set_ylabel("Group Delay  [s]", fontsize=10)
+        # ax_gd.set_title("Group Delay", fontsize=10, fontweight="bold")
+        ax_gd.grid(True, which="both", linestyle="--", linewidth=0.4, alpha=0.6)
+        ax_gd.set_xlim(freq_min, freq_max)
+        ax_gd.legend(fontsize=7, loc="upper right")
+
+        # ── info box ─────────────────────────────────────────────────────
+        info = (
+            f"Sensitivity : {self.sensitivity:.4g}\n"
+            f"A\u2080          : {self.normalization_factor:.4g}\n"
+            f"Domain      : {self.domain.unit_label()}\n"
+            f"Poles / Zeros : {self.n_poles} / {self.n_zeros}"
+        )
+        ax_amp.text(
+            0.01, 0.97, info,
+            transform=ax_amp.transAxes, fontsize=7,
+            verticalalignment="top", fontfamily="monospace",
+            bbox=dict(boxstyle="round,pad=0.4", facecolor="white",
+                      edgecolor="gray", alpha=0.8),
+        )
+
+        if save_path:
+            fig.savefig(save_path, dpi=150, bbox_inches="tight")
+            print(f"Figure saved → {save_path}")
+
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+
 
     # ------------------------------------------------------------------
     # Display
