@@ -9,6 +9,117 @@ import SeisRoutine.core as src
 import logging
 import re
 import os
+import glob
+import obspy as obs
+
+
+class StreamCache:
+    def __init__(
+            self,
+            root: str,
+            pattern_path: str,
+            **pattern_vars
+        ):
+        self.root = root
+        self.pattern_path = pattern_path
+        self.pattern_vars = pattern_vars
+        self.stream = None
+        self.stations: list[str] = []
+        self._loaded_julday: int | None = None
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+    def get(self, time, station_code: str):
+        """Return the stream for a specific time and station.
+
+        Reloads from disk only when the requested day differs from what
+        is currently cached.
+        """
+        if self._should_reload(time):
+            self._read(time)
+
+        target_stream = self.stream.select(station=station_code)
+        if not target_stream:
+            msg = (
+                f"Station '{station_code}' not found in stream for "
+                f"year: {time.year} julday: {time.julday}."
+            )
+            logging.warning(msg)
+            # raise ValueError(
+            #     f"Station '{station_code}' not found in stream for "
+            #     f"julday {time.julday}."
+            # )
+            return obs.Stream()
+        return target_stream
+
+    def get_by_pick(self, pick):
+        """Convenience wrapper that extracts time and station from a Pick."""
+        return self.get(
+            time=pick.time,
+            station_code=pick.waveform_id.station_code
+        )
+    
+    def check_sps(self, sps=100):
+        wrong = {
+            tr.stats.station: tr.stats.sampling_rate
+            for tr in self.stream
+            if tr.stats.sampling_rate != sps
+        }
+        if wrong:
+            raise ValueError(
+                f"Unexpected sampling rate(s) — expected {sps} Hz, "
+                f"got: {wrong}"
+            )
+
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
+
+    def _should_reload(self, time) -> bool:
+        if self.stream is None:
+            return True
+        if time.julday != self._loaded_julday:
+            return True
+        return False
+
+    def _read(self, time):
+        pattern = self.pattern_path.format(time=time, **self.pattern_vars)
+        pattern_path = f"{self.root}/{pattern}"
+        logging.info(f"Reading waveform data: {pattern_path}")
+
+        self.stream = self._read_safely(pattern_path)
+        self._preprocess()
+        self._loaded_julday = self.stream[0].stats.starttime.julday
+        self.stations = list({tr.stats.station for tr in self.stream})
+
+    def _read_safely(self, path):
+        '''
+        There is an issue with some .gcf files that causes an error
+        when attempting to read them with ObsPy.
+        
+        pattern: The pattern of the file. It must start with . and end with $.
+        If you want the pattern to include "#", use "#".
+        If you want the pattern to exclude "#", use "[^#]".
+            Example: ".*6226z4.*20241201.*[^#].*\.gcf$"
+        '''
+        st = obs.Stream()
+        lst_files = glob.glob(path)
+        for fpath in lst_files:
+            try:
+                st.extend(obs.read(fpath))
+                logging.info(f'Data Loaded | {fpath}')
+            except Exception as error:
+                logging.warning(f"Couldn't load data file | {fpath}")
+                logging.debug(f"Becuase of the following error:\n{error}")    
+        return st
+
+    def _preprocess(self):
+        self.stream.merge(-1)
+        self.stream.detrend("constant")
+        self.stream.merge()
+
+
 
 
 def read_gcf_safely(root: str, pattern: str):
