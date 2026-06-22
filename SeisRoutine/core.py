@@ -1,42 +1,147 @@
 import numpy as np
 import latlon as ll
 
-def making_latlon(coord_str: str='5 52 59.88 N',
-                  format: str='d% %m% %S% %H'):
-    '''
-    convert coordinate: Degrees°minutes'seconds" ---> Decimal.degrees
-                        22°45'45                 ---> 22.7625
-    '''
-    hemisphere = coord_str[-1]
-    #
-    if hemisphere in ['E', 'W']:
-        coord_class = ll.Longitude
-    elif hemisphere in ['N', 'S']:
-        coord_class = ll.Latitude
-    else:
-        raise ValueError('Hemisphere identifier N, S, E or W')
-    #
-    coord = ll.string2geocoord(coord_str, coord_class, format)
-    return coord
 
+class SeisanCoord:
+    """
+    Convert coordinates between Seisan/HYPO71 and Decimal Degree formats.
 
-def dm2dd(coord_str: str):
-    '''
-    convert coordinate: Degree-Minute ---> Decimal-Degree
-                        2245.45N      ---> 22.7575
-    The Degree-Minute format used by HYPO71 and Seisan
-    in STATION0.HYP file.
-    '''
-    #Parsing the components of a coordinate string.
-    degree = coord_str[0: 2]
-    minute = coord_str[2: -1]
-    hemisphere = coord_str[-1]
-    # Reformat the string of the input coordinate.
-    coord_str = f'{degree} {minute} {hemisphere}'
-    format = 'd% %M% %H'
-    #
-    coord = making_latlon(coord_str, format)
-    return coord.decimal_degree
+    Seisan format:  2825.46N  (DDmm.mmH)
+    DD format:      28.4243
+
+    Examples:
+        >>> lat = SeisanCoord('2825.46N')
+        >>> lat.dd
+        28.4243
+        >>> lat.seisan
+        '2825.46N'
+
+        >>> lon = SeisanCoord(51.917, is_longitude=True)
+        >>> lon.dd
+        51.917
+        >>> lon.seisan
+        '05155.02E'
+
+        >>> SeisanCoord.from_seisan('2825.46S').dd
+        -28.4243
+
+        >>> SeisanCoord.from_dd(-100.917, is_longitude=True).seisan
+        '10055.02W'
+    """
+
+    def __init__(self, value: float | str, is_longitude: bool = False):
+        """
+        Args:
+            value:
+                Decimal degree (float) or Seisan string (e.g. '2825.46N').
+            is_longitude:
+                Required only when value is a float. Ignored for strings.
+        """
+        if isinstance(value, str):
+            self._dd, self._is_longitude = self._parse_seisan(value)
+        elif isinstance(value, (int, float)):
+            self._dd = float(value)
+            self._is_longitude = is_longitude
+        else:
+            msg = "value must be a Seisan string or a numeric decimal degree."
+            raise TypeError(msg)
+
+    # ------------------------------------------------------------------
+    #  Properties
+    # ------------------------------------------------------------------
+
+    @property
+    def dd(self) -> float:
+        """Coordinate in Decimal Degree format."""
+        return round(self._dd, 6)
+
+    @property
+    def seisan(self) -> str:
+        """Coordinate in Seisan/HYPO71 string format."""
+        return self._to_seisan(self._dd, self._is_longitude)
+
+    @property
+    def is_longitude(self) -> bool:
+        """
+        True if the coordinate represents longitude (E/W),
+        False for latitude (N/S).
+        """
+        return self._is_longitude
+
+    # ------------------------------------------------------------------
+    #  Private helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_seisan(coord_str: str) -> tuple[float, bool]:
+        coord_str = coord_str.strip().upper()
+        hemisphere = coord_str[-1]
+
+        if hemisphere not in ('N', 'S', 'E', 'W'):
+            msg = f"Invalid hemisphere '{hemisphere}'. Must be N, S, E, or W."
+            raise ValueError(msg)
+
+        is_longitude = hemisphere in ('E', 'W')
+        degree_digits = 3 if is_longitude else 2
+        numeric = coord_str[:-1]
+
+        degrees = float(numeric[:degree_digits])
+        minutes = float(numeric[degree_digits:])
+        dd = degrees + minutes / 60.0
+
+        if hemisphere in ('S', 'W'):
+            dd = -dd
+
+        return dd, is_longitude
+
+    @staticmethod
+    def _to_seisan(dd: float, is_longitude: bool) -> str:
+        if is_longitude:
+            hemisphere = ('E' if dd >= 0 else 'W')
+        else:
+            hemisphere = ('N' if dd >= 0 else 'S')
+        abs_dd = abs(dd)
+        degrees = int(abs_dd)
+        minutes = (abs_dd - degrees) * 60.0
+
+        if is_longitude:
+            return f"{degrees:03d}{minutes:05.2f}{hemisphere}"
+        else:
+            return f"{degrees:02d}{minutes:05.2f}{hemisphere}"
+
+    # ------------------------------------------------------------------
+    #  Class methods
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def from_dd(cls, dd: float, is_longitude: bool = False) -> 'SeisanCoord':
+        """
+        Create an instance from a Decimal Degree value.
+        """
+
+        return cls(dd, is_longitude=is_longitude)
+
+    @classmethod
+    def from_seisan(cls, coord_str: str) -> 'SeisanCoord':
+        """
+        Create an instance from a Seisan/HYPO71 coordinate string.
+        """
+    
+        return cls(coord_str)
+
+    # ------------------------------------------------------------------
+    #  Dunder methods
+    # ------------------------------------------------------------------
+
+    def __repr__(self) -> str:
+        kind = "Lon" if self._is_longitude else "Lat"
+        return f"SeisanCoord({kind}: dd={self.dd}, seisan='{self.seisan}')"
+
+    def __float__(self) -> float:
+        return self._dd
+
+    def __str__(self) -> str:
+        return self.seisan
 
 
 def density_meshgrid(x, y, xstep, ystep, zreplace=0.9):
