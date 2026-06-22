@@ -5,12 +5,56 @@ import numpy as np
 from obspy.imaging.cm import pqlx
 import SeisRoutine.plot as srp
 import SeisRoutine.core as src
+import SeisRoutine.catalog as srcat
 import scipy as sp
 from obspy.core.event import Catalog
-
-
 from typing import Optional
 from obspy.core.event import Pick, Arrival
+
+
+class ArrivalCoverageAnalyzer:
+    def __init__(self, catalog):
+        self.catalog = catalog
+
+    def calculate(self):
+        picks_with_arrival = 0
+        picks_without_arrival = 0
+        picks_hint_without_arrival = []
+
+        for event in self.catalog:
+            origin = event.preferred_origin()
+
+            if origin is None:
+                picks_without_arrival += len(event.picks)
+                continue
+
+            selector = srcat.CatalogPickArrivalSelector(
+                picks=event.picks,
+                arrivals=origin.arrivals,
+            )
+
+            for pick in event.picks:
+                if selector.get_arrival_of_pick(pick) is not None:
+                    picks_with_arrival += 1
+                else:
+                    picks_without_arrival += 1
+                    picks_hint_without_arrival.append(pick.phase_hint)
+
+        return {
+            "with_arrival": picks_with_arrival,
+            "without_arrival": picks_without_arrival,
+            "hint_without_arrival": set(picks_hint_without_arrival)
+        }
+
+    def build_message(self):
+        stats = self.calculate()
+
+        return (
+            "Pick arrival situation:\n"
+            f"{stats['with_arrival']} picks have related arrivals.\n"
+            f"{stats['without_arrival']} picks do not have related arrivals "
+            f"({stats['hint_without_arrival']})."
+        )
 
 
 class CatalogPickArrivalSelector:
