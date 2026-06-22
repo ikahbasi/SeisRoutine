@@ -14,6 +14,70 @@ from time import perf_counter
 from functools import wraps
 
 
+class ProgressMsg:
+    """
+    Utility class for building formatted progress messages.
+
+    This class provides methods to compute completion percentages
+    and generate a human-readable summary of multiple progress items.
+    """
+
+    @staticmethod
+    def pct(part, total):
+        """
+        Calculate completion percentage.
+
+        Args:
+            part (int | float): Completed amount.
+            total (int | float): Total amount.
+
+        Returns:
+            float: Percentage value between 0 and 100.
+                   Returns 0.0 if total is zero.
+        """
+        return 100 * part / total if total else 0.0
+
+    @classmethod
+    def build(cls, subject="Passed", **kwargs):
+        """
+        Build a formatted progress message string.
+
+        The first element of the message is a subject label (default: "Passed"),
+        followed by progress entries in the form:
+            part/total (percentage%) key
+
+        Each keyword argument must be provided as:
+            key = (part, total)
+
+        Args:
+            subject (str): Leading label for the message. Default is "Passed".
+            **kwargs: Named progress items where each value is a tuple
+                      of (part, total).
+
+        Returns:
+            str: A pipe-separated progress summary string.
+
+        Example:
+            ProgressMsg.build(
+                subject="Completed",
+                downloads=(3, 10),
+                uploads=(2, 5)
+            )
+
+            Output:
+            "Completed | 3/10 (30.00%) downloads | 2/5 (40.00%) uploads"
+        """
+
+        parts = [subject]
+
+        for key, (part, total) in kwargs.items():
+            parts.append(
+                f"{part}/{total} ({cls.pct(part, total):.2f}%) {key}"
+            )
+
+        return " | ".join(parts)
+
+
 def timer(func):
     """
     Measure and print the execution time of a function.
