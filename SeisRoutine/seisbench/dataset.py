@@ -1,391 +1,422 @@
-from math import cos, radians
+from math import sqrt
+
+import numpy as np
+
+from seisbench.util import stream_to_array
+
 import SeisRoutine.catalog as src
 
-def get_uncertainty(error_obj):
-    """
-    Safely extract uncertainty from ObsPy error objects.
 
-    Parameters
-    ----------
-    error_obj : QuantityError or None
+class MetadataBuilder:
 
-    Returns
-    -------
-    float or None
-    """
-    return getattr(error_obj, "uncertainty", None)
+    def __init__(
+        self,
+        stream,
+        event=None,
+        inventory=None,
+        component_order="ZNE",
+        trace_category="earthquake",
+    ):
+        self.stream = stream
+        self.event = event
+        self.inventory = inventory
+        self.component_order = component_order
+        self.trace_category = trace_category
 
+        self.trace = stream[0]
 
-def get_source_params(event):
-    """
-    Extract source parameters from an ObsPy Event.
+        self.starttime, self.data, self.completeness = stream_to_array(
+            stream=stream,
+            component_order=component_order,
+        )
 
-    Parameters
-    ----------
-    event : obspy.core.event.Event
+        # Filter picks for this station once; reused across all build methods.
+        self._station_picks = self._filter_picks_for_station()
+        self.origin = self._get_origin()
 
-    Returns
-    -------
-    dict or None
-    """
+    # ------------------------------------------------------------------
+    # Utilities
+    # ------------------------------------------------------------------
 
-    origin = event.preferred_origin()
-    if origin is None and event.origins:
-        origin = event.origins[0]
+    def _filter_picks_for_station(self):
+        """
+        Return only the picks that belong to the station and network of this
+        trace. Without this filter, picks from other stations would
+        incorrectly appear in the metadata.
+        """
+        if self.event is None:
+            return []
 
-    if origin is None:
-        return {}
+        tr = self.trace
 
-    lat = origin.latitude
-    lon = origin.longitude
+        return [
+            pick for pick in self.event.picks
+            if (
+                pick.waveform_id is not None
+                and pick.waveform_id.station_code == tr.stats.station
+                # and pick.waveform_id.network_code == tr.stats.network
+            )
+        ]
 
-    lat_unc_deg = get_uncertainty(origin.latitude_errors)
-    lon_unc_deg = get_uncertainty(origin.longitude_errors)
+    @staticmethod
+    def _get_uncertainty(error_obj):
+        return getattr(error_obj, "uncertainty", None)
 
-    lat_unc_km = (
-        lat_unc_deg * 111
-        if lat_unc_deg is not None
-        else None
-    )
+    def _get_origin(self):
+        if self.event is None:
+            return None
 
-    lon_unc_km = (
-        lon_unc_deg * 111 * cos(radians(lat))
-        if lon_unc_deg is not None and lat is not None
-        else None
-    )
+        origin = self.event.preferred_origin()
 
-    source_params = {
-        "source_id": str(event.resource_id),
-        "source_origin_time": origin.time.datetime,
-        "source_origin_uncertainty_sec":
-            get_uncertainty(origin.time_errors),
+        if origin is None and self.event.origins:
+            origin = self.event.origins[0]
 
-        "source_latitude_deg": lat,
-        "source_latitude_uncertainty_km": lat_unc_km,
+        return origin
 
-        "source_longitude_deg": lon,
-        "source_longitude_uncertainty_km": lon_unc_km,
+    def _get_magnitude(self):
+        if self.event is None:
+            return None
 
-        "source_depth_km":
-            origin.depth / 1000
-            if origin.depth is not None
-            else None,
+        magnitude = self.event.preferred_magnitude()
 
-        "source_depth_uncertainty_km":
-            get_uncertainty(origin.depth_errors) / 1000
-            if get_uncertainty(origin.depth_errors) is not None
-            else None,
-    }
+        if magnitude is None and self.event.magnitudes:
+            magnitude = self.event.magnitudes[0]
 
-    return source_params
+        return magnitude
 
+    # ------------------------------------------------------------------
+    # Source
+    # ------------------------------------------------------------------
 
-def get_source_quality_params(event):
-    """
-    Extract source quality information from an ObsPy Event.
+    def build_source_parameters(self):
+        origin = self.origin
 
-    Parameters
-    ----------
-    event : obspy.core.event.Event
+        if origin is None:
+            return {}
 
-    Returns
-    -------
-    dict
-    """
+        # Use getattr to avoid AttributeError when an ObsPy Origin object has
+        # quality or origin_uncertainty set to None.
+        quality = getattr(origin, "quality", None)
+        origin_unc = getattr(origin, "origin_uncertainty", None)
 
-    origin = event.preferred_origin()
-    if origin is None and event.origins:
-        origin = event.origins[0]
+        depth_unc = self._get_uncertainty(origin.depth_errors)
 
-    if origin is None:
-        source_quality_params = {}
-    else:
-        quality = origin.quality
-        origin_unc = origin.origin_uncertainty
+        params = {
+            "source_id":
+                str(self.event.resource_id)
+                if self.event.resource_id
+                else None,
 
-        source_quality_params = {
-            "source_azimuthal_gap_deg":
-                getattr(quality, "azimuthal_gap", None),
+            "source_origin_time":
+                origin.time.datetime,
 
-            "source_used_phase_count":
-                getattr(quality, "used_phase_count", None),
+            "source_origin_uncertainty_sec":
+                self._get_uncertainty(origin.time_errors),
 
-            "source_used_station_count":
-                getattr(quality, "used_station_count", None),
+            "source_latitude_deg":
+                origin.latitude,
 
-            "source_standard_error":
-                getattr(quality, "standard_error", None),
+            "source_latitude_uncertainty_deg":
+                self._get_uncertainty(origin.latitude_errors),
 
+            "source_longitude_deg":
+                origin.longitude,
+
+            "source_longitude_uncertainty_deg":
+                self._get_uncertainty(origin.longitude_errors),
+
+            "source_depth_km":
+                origin.depth / 1000
+                if origin.depth is not None
+                else None,
+
+            # ObsPy stores depth in metres; convert to kilometres.
+            "source_depth_uncertainty_km":
+                depth_unc / 1000
+                if depth_unc is not None
+                else None,
+
+            "source_error_sec":
+                getattr(quality, "standard_error", None)
+                if quality is not None
+                else None,
+
+            "source_gap_deg":
+                getattr(quality, "azimuthal_gap", None)
+                if quality is not None
+                else None,
+
+            # ObsPy stores OriginUncertainty.horizontal_uncertainty in km,
+            # so no unit conversion is needed here.
             "source_horizontal_uncertainty_km":
-                (
-                    getattr(origin_unc, "horizontal_uncertainty", None)
-                    / 1000
-                )
-                if getattr(origin_unc, "horizontal_uncertainty", None)
-                is not None
+                getattr(origin_unc, "horizontal_uncertainty", None)
+                if origin_unc is not None
                 else None,
         }
 
-    return source_quality_params
+        magnitude = self._get_magnitude()
 
+        if magnitude is not None:
+            params.update({
+                "source_magnitude":
+                    magnitude.mag,
 
-def get_magnitude_params(event):
-    """
-    Extract magnitude information from an ObsPy Event.
+                "source_magnitude_type":
+                    magnitude.magnitude_type,
 
-    Parameters
-    ----------
-    event : obspy.core.event.Event
+                "source_magnitude_author":
+                    magnitude.creation_info.agency_id
+                    if magnitude.creation_info
+                    else None,
+                "source_magnitude_uncertainty":
+                    self._get_uncertainty(magnitude.mag_errors),
+            })
 
-    Returns
-    -------
-    dict
-    """
+        return params
 
-    mag = event.preferred_magnitude()
+    # ------------------------------------------------------------------
+    # Station
+    # ------------------------------------------------------------------
 
-    if mag is None and event.magnitudes:
-        mag = event.magnitudes[0]
+    def build_station_parameters(self):
+        tr = self.trace
 
-    if mag is None:
-        magnitude_params = {}
-    else:
-        magnitude_params = {
-            "source_magnitude": mag.mag,
-            "source_magnitude_uncertainty":
-                get_uncertainty(mag.mag_errors),
-
-            "source_magnitude_type":
-                mag.magnitude_type,
-
-            "source_magnitude_author":
-                (
-                    mag.creation_info.agency_id
-                    if mag.creation_info is not None
-                    else None
-                ),
-        }
-
-    return magnitude_params
-
-
-def get_event_params(event):
-    """
-    Extract all source metadata from an ObsPy Event.
-
-    Parameters
-    ----------
-    event : obspy.core.event.Event
-
-    Returns
-    -------
-    dict
-    """
-
-    event_params = {
-        **get_source_params(event),
-        **get_source_quality_params(event),
-        **get_magnitude_params(event),
-    }
-
-    return event_params
-
-
-def build_station_metadata(df):
-    """
-    Build station metadata dictionary from a station dataframe.
-
-    Parameters
-    ----------
-    df : pandas.DataFrame
-        Station metadata table.
-
-    Returns
-    -------
-    dict
-        Dictionary indexed by station_id.
-    """
-
-    stations = {}
-
-    for row in df.itertuples(index=False):
-
-        location = (
-            str(row.location)
-            if row.location is not None
-            else ""
-        )
-
-        # station_id = f"{row.network}.{row.station}.{location}.{row.channel}"
-        station_id = row.station
-
-        stations[station_id] = {
-            "station_id": station_id,
-
-            "station_code": row.station,
-            "station_network_code": row.network,
-            "station_location_code": location,
-
-            "station_latitude_deg": row.latitude,
-            "station_longitude_deg": row.longitude,
-            "station_elevation_m": row.elevation,
-
-            "station_channel_type": row.channel,
-
-            "station_sensor_model": row.sensor,
-
-            "station_region": row.region,
-
+        params = {
+            "station_code":           tr.stats.station,
+            "station_network_code":   tr.stats.network,
+            "station_location_code":  tr.stats.location,
+            "station_latitude_deg":   None,
+            "station_longitude_deg":  None,
+            "station_elevation_m":    None,
             "station_sensitivity_counts_spm": None,
         }
 
-    return stations
+        if self.inventory is None:
+            return params
 
+        # Geographic coordinates of the station.
+        try:
+            inv_sta = self.inventory.select(
+                network=tr.stats.network,
+                station=tr.stats.station,
+            )[0][0]
 
-def get_pick_trace_params(pick):
+            params.update({
+                "station_latitude_deg":  inv_sta.latitude,
+                "station_longitude_deg": inv_sta.longitude,
+                "station_elevation_m":   inv_sta.elevation,
+            })
+        except Exception:
+            pass
 
-    waveform_id = pick.waveform_id
+        # Channel sensitivity — was never populated in the original code.
+        try:
+            inv_cha = self.inventory.select(
+                network=tr.stats.network,
+                station=tr.stats.station,
+                location=tr.stats.location,
+                channel=tr.stats.channel,
+            )[0][0][0]
 
-    if waveform_id is None:
-        pick_trace_params = {}
-    else:
-        net = waveform_id.network_code
-        sta = waveform_id.station_code
-        loc = waveform_id.location_code or ""
+            sensitivity = (
+                inv_cha.response.instrument_sensitivity
+                if inv_cha.response
+                else None
+            )
 
-        channel_code = waveform_id.channel_code
+            if sensitivity is not None:
+                params["station_sensitivity_counts_spm"] = sensitivity.value
 
-        pick_trace_params = {
-            "station_id":
-                f"{net}.{sta}"
-                if loc == ""
-                else f"{net}.{sta}.{loc}",
+        except Exception:
+            pass
 
-            "station_network_code": net,
-            "station_code": sta,
-            "station_location_code": loc,
+        return params
 
-            "trace_channel_type":
-                channel_code[:2]
-                if channel_code is not None
-                else None,
+    # ------------------------------------------------------------------
+    # Trace
+    # ------------------------------------------------------------------
 
-            "trace_phase_hint": pick.phase_hint,
+    def build_trace_parameters(self):
+        tr = self.trace
+        sps = tr.stats.sampling_rate
+        origin = self.origin
 
-            "trace_pick_time": pick.time.datetime,
+        # stream_to_array returns one completeness value per component;
+        # reduce to a single scalar for the metadata field.
+        completeness = self.completeness
+        if hasattr(completeness, "__len__"):
+            completeness = float(np.mean(completeness))
+        else:
+            completeness = float(completeness)
 
-            "trace_evaluation_mode":
-                str(pick.evaluation_mode)
-                if pick.evaluation_mode is not None
-                else None,
+        params = {
+            "trace_name":
+                f"{tr.id}__{self.starttime.isoformat()}",
 
-            "trace_onset":
-                str(pick.onset)
-                if pick.onset is not None
-                else None,
+            "trace_start_time":
+                self.starttime.datetime,
 
-            "trace_polarity":
-                str(pick.polarity)
-                if pick.polarity is not None
-                else None,
+            "trace_sampling_rate_hz":
+                tr.stats.sampling_rate,
+
+            "trace_dt_s":
+                tr.stats.delta,
+
+            "trace_npts":
+                self.data.shape[-1],
+
+            "trace_channel":
+                tr.stats.channel[:2],
+
+            "trace_category":
+                self.trace_category,
+
+            "trace_completeness":
+                completeness,
         }
 
-    return pick_trace_params
+        # Per-component waveform statistics.
+        for component, values in zip(self.component_order, self.data):
+            params.update({
+                f"trace_{component}_median_counts":
+                    float(np.nanmedian(values)),
 
+                f"trace_{component}_mean_counts":
+                    float(np.nanmean(values)),
 
-ARRIVAL_ATTRIBUTES = {
-    "distance_deg": "distance",
-    "azimuth_deg": "azimuth",
-    "time_residual_sec": "time_residual",
-    "time_weight": "time_weight",
-    "takeoff_angle_deg": "takeoff_angle",
-    "backazimuth_residual_deg": "backazimuth_residual",
-    "backazimuth_weight": "backazimuth_weight",
-}
+                f"trace_{component}_rms_counts":
+                    float(np.sqrt(np.nanmean(values ** 2))),
 
+                f"trace_{component}_min_counts":
+                    float(np.nanmin(values)),
 
-def get_phase_params(pick, event):
-    """
-    Extract arrival-related phase parameters associated with a pick.
+                f"trace_{component}_max_counts":
+                    float(np.nanmax(values)),
 
-    The function searches for the Arrival object linked to the given
-    Pick within the preferred origin of the event and extracts selected
-    arrival attributes. Extracted parameters are suffixed with the phase
-    name (e.g., ``_P`` or ``_S``) so that multiple phase measurements
-    can be stored in a single metadata record.
+                f"trace_{component}_lower_quartile_counts":
+                    float(np.nanpercentile(values, 25)),
 
-    Parameters
-    ----------
-    pick : obspy.core.event.Pick
-        Pick object containing phase information.
-    event : obspy.core.event.Event
-        Event containing origins and arrivals.
+                f"trace_{component}_upper_quartile_counts":
+                    float(np.nanpercentile(values, 75)),
 
-    Returns
-    -------
-    dict
-        Dictionary containing available arrival parameters. Keys are
-        formatted as ``phase_<parameter>_<phase>``. An empty dictionary
-        is returned if no origin or matching arrival is found.
+                f"trace_{component}_spikes":
+                    None,
+            })
 
-    Notes
-    -----
-    Extracted parameters may include:
+        # Phase picks (this station only).
 
-    - phase_distance_deg_<phase>
-    - phase_azimuth_deg_<phase>
-    - phase_time_residual_sec_<phase>
-    - phase_time_weight_<phase>
-    - phase_takeoff_angle_deg_<phase>
-    - phase_backazimuth_residual_deg_<phase>
-    - phase_backazimuth_weight_<phase>
-
-    Examples
-    --------
-    Extract parameters for a single phase:
-
-    >>> get_phase_params(p_pick, event)
-    {
-        'phase_distance_deg_P': 1.25,
-        'phase_time_residual_sec_P': -0.08,
-        'phase_time_weight_P': 1.0
-    }
-
-    Merge P- and S-phase parameters into a single metadata record:
-
-    >>> params = {
-    ...     **get_phase_params(p_pick, event),
-    ...     **get_phase_params(s_pick, event),
-    ... }
-    """
-
-    phase_params = {}
-
-    origin = event.preferred_origin()
-
-    if origin is None and event.origins:
-        origin = event.origins[0]
-
-    if origin is not None:
-
-        arrival = src.select_arrival_related_to_the_pick(
-            pick=pick,
+        selector = src.CatalogPickArrivalSelector(
+            picks=self._station_picks,
             arrivals=origin.arrivals,
         )
+        for pick in self._station_picks:
+            hint = (pick.phase_hint or "")
 
-        if arrival is not None:
+            if (hint=="") or (hint[0] not in "PS"):
+                continue
 
-            phase = (pick.phase_hint or "UNK").upper()
+            sample = int(round((pick.time - self.starttime) * sps))
 
-            arrival_params = {
-                key: getattr(arrival, attribute)
-                for key, attribute in ARRIVAL_ATTRIBUTES.items()
-            }
+            params[f"trace_{hint}_arrival_sample"] = sample
 
-            phase_params = {
-                f"phase_{key}_{phase}": value
-                for key, value in arrival_params.items()
-                if value is not None
-            }
+            params[f"trace_{hint}_status"] = (
+                str(pick.evaluation_mode)
+                if pick.evaluation_mode
+                else None
+            )
 
-    return phase_params
+            # Pick weight lives on the Arrival object, not on Pick itself.
+            pick_weight = None
+            if origin is not None:
+                arrival = selector.get_arrival_of_pick(pick=pick)
+                # arrival = src.select_arrival_related_to_the_pick(
+                #     pick=pick,
+                #     arrivals=origin.arrivals,
+                # )
+                if arrival is not None:
+                    pick_weight = arrival.time_weight
+
+            params[f"trace_{hint}_weight"] = pick_weight
+
+            params[f"trace_{hint}_uncertainty_s"] = (
+                self._get_uncertainty(pick.time_errors)
+                if pick.time_errors is not None
+                else None
+            )
+
+        # Polarity is a single trace-level field (not per-phase).
+        # Use the first pick for this station that carries a polarity value.
+        for pick in self._station_picks:
+            if pick.polarity:
+                params["trace_polarity"] = str(pick.polarity)
+                break
+        else:
+            params["trace_polarity"] = None
+
+        return params
+
+    # ------------------------------------------------------------------
+    # Path
+    # ------------------------------------------------------------------
+
+    def build_path_parameters(self):
+        origin = self.origin
+
+        if origin is None or self.event is None:
+            return {}
+
+        params = {}
+
+        selector = src.CatalogPickArrivalSelector(
+            picks=self._station_picks,
+            arrivals=origin.arrivals,
+        )
+        for pick in self._station_picks:
+            arrival = selector.get_arrival_of_pick(pick=pick)
+            # arrival = src.select_arrival_related_to_the_pick(
+            #     pick=pick,
+            #     arrivals=origin.arrivals,
+            # )
+
+            if arrival is None:
+                continue
+
+            hint = (pick.phase_hint or "")
+
+            if (hint=="") or (hint[0] not in "PS"):
+                continue
+
+            params[f"path_{hint}_travel_s"] = float(
+                pick.time - origin.time
+            )
+
+            params[f"path_{hint}_residual_s"] = arrival.time_residual
+
+            params[f"path_weight_phase_location_{hint}"] = arrival.time_weight
+
+            # arrival.distance in ObsPy is in degrees; convert to kilometres.
+            if arrival.distance is not None:
+                params["path_ep_distance_km"] = arrival.distance * 111.195
+
+            if arrival.azimuth is not None:
+                params["path_azimuth_deg"] = arrival.azimuth
+                params["path_back_azimuth_deg"] = (arrival.azimuth + 180) % 360
+
+        if "path_ep_distance_km" in params and origin.depth is not None:
+            epi_km = params["path_ep_distance_km"]
+            depth_km = origin.depth / 1000
+            params["path_hyp_distance_km"] = sqrt(epi_km ** 2 + depth_km ** 2)
+
+        return params
+
+    # ------------------------------------------------------------------
+    # All
+    # ------------------------------------------------------------------
+
+    def build_metadata(self):
+        return {
+            **self.build_trace_parameters(),
+            **self.build_source_parameters(),
+            **self.build_station_parameters(),
+            **self.build_path_parameters(),
+        }
