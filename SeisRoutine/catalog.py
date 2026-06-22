@@ -15,6 +15,7 @@ from obspy.core.event import Pick, Arrival
 class ArrivalCoverageAnalyzer:
     def __init__(self, catalog):
         self.catalog = catalog
+        self.stats = None
 
     def calculate(self):
         picks_with_arrival = 0
@@ -39,15 +40,15 @@ class ArrivalCoverageAnalyzer:
                 else:
                     picks_without_arrival += 1
                     picks_hint_without_arrival.append(pick.phase_hint)
-
-        return {
+        self.stats = {
             "with_arrival": picks_with_arrival,
             "without_arrival": picks_without_arrival,
-            "hint_without_arrival": set(picks_hint_without_arrival)
+            "hint_without_arrival": set(picks_hint_without_arrival),
         }
 
     def build_message(self):
-        stats = self.calculate()
+        self.calculate()
+        stats = self.stats
 
         return (
             "Pick arrival situation:\n"
