@@ -9,54 +9,107 @@ import scipy as sp
 from obspy.core.event import Catalog
 
 
-def select_pick_of_arrival(arrival, picks):
+from typing import Optional
+from obspy.core.event import Pick, Arrival
+
+
+class CatalogPickArrivalSelector:
     """
-    Find and return the corresponding pick for a given arrival.
+    Extracts and matches related components (picks and arrivals)
+    from an ObsPy event catalog.
 
-    Parameters:
-        arrival (obspy.core.event.origin.Arrival): 
-            The arrival object containing a reference to a pick.
-        picks (list of obspy.core.event.origin.Pick): 
-            A list of pick objects to search within.
-
-    Returns:
-        obspy.core.event.origin.Pick or bool: 
-            The corresponding pick object if found, otherwise `False`.
-
-    Notes:
-        - The function iterates through the list of picks and matches them 
-          with the `pick_id` of the given `arrival`.
-        - If no matching pick is found, it returns `False`.
+    Usage
+    ------
+    selector = CatalogPickArrivalSelector(
+        picks=event.picks,
+        arrivals=origin.arrivals
+    )
+    pick    = selector.get_pick_of_arrival(arrival)
+    arrival = selector.get_arrival_of_pick(pick)
     """
-    find_pick = False
-    for pick in picks:
-        if pick.resource_id == arrival.pick_id:
-            find_pick = True
-            break
-    if not find_pick:
-        pick = False
-    return pick
 
+    def __init__(
+            self,
+            picks: list[Pick],
+            arrivals: list[Arrival]
+        ) -> None:
+        """
+        Parameters:
+            picks: List of Pick objects from the catalog.
+            arrivals: List of Arrival objects from the catalog.
+        """
+        self.picks = picks
+        self.arrivals = arrivals
 
-def select_arrival_related_to_the_pick(pick, arrivals):
-    '''
-    This function selects the arrival related to the given pick from a list of arrivals.
+    def get_pick_of_arrival(
+            self,
+            arrival: Arrival
+        ) -> Optional[Pick]:
+        """
+        Find the pick corresponding to a given arrival.
 
-    Parameters:
-    pick (Pick): The obspy pick object to find the related arrival for.
-    arrivals (list): A list of obspy arrival objects to search through.
+        Parameters:
+            arrival: The Arrival object containing a pick_id reference.
 
-    Returns:
-    Arrival: The arrival object related to the given pick, or False if no related arrival is found.
-    '''
-    find_arrival = False
-    for arrival in arrivals:
-        if arrival.pick_id == pick.resource_id:
-            find_arrival = True
-            break
-    if not find_arrival:
-        arrival = False
-    return arrival
+        Returns:
+            The matching Pick object, or None if not found.
+        """
+        pick = next(
+            (pick for pick in self.picks
+             if pick.resource_id == arrival.pick_id),
+            None
+        )
+
+        return pick
+
+    def get_arrival_of_pick(
+            self,
+            pick: Pick
+        ) -> Optional[Arrival]:
+        """
+        Find the arrival corresponding to a given pick.
+
+        Parameters:
+            pick: The Pick object containing a resource_id reference.
+
+        Returns:
+            The matching Arrival object, or None if not found.
+        """
+        arrival = next(
+            (arrival for arrival in self.arrivals
+             if arrival.pick_id == pick.resource_id),
+            None
+        )
+
+        return arrival
+    
+    def get_picks_by_station(
+            self,
+            station_name: str,
+            exclude_amplitude: bool = True,
+            time_sort: bool = True,
+        ) -> list[Pick]:
+        """
+        Filter and return picks for a specific station, sorted by time.
+
+        Parameters:
+            station_name: The station code to filter picks for.
+            exclude_amplitude: If True (default), picks whose phase hint
+                starts with 'AM' are excluded. If False, only those picks
+                are returned.
+
+        Returns:
+            A list of Pick objects filtered by station and sorted by time.
+        """
+        filtered = [
+            p for p in self.picks
+            if p.waveform_id.station_code == station_name
+            and p.phase_hint.startswith('AM') != exclude_amplitude
+        ]
+        if time_sort:
+            filtered = sorted(filtered, key=lambda p: p.time)
+
+        return filtered
 
 
 def make_autopct(values):
@@ -226,11 +279,11 @@ class inspector:
                     #                     [arrival.time_residual for arrival in origin.arrivals
                     #                      if arrival.time_residual is not None]) ** 2
                     #             )),
-                    'errorH': np.sqrt(
-                                    (origin.latitude_errors['uncertainty']*111)**2 +
-                                    (origin.longitude_errors['uncertainty']*111)**2),
+                    # 'errorH': np.sqrt(
+                    #                 (origin.latitude_errors['uncertainty']*111)**2 +
+                    #                 (origin.longitude_errors['uncertainty']*111)**2),
                     #  'errorH': origin.origin_uncertainty.horizontal_uncertainty / 1000,
-                    'errorZ': origin.depth_errors['uncertainty'] / 1000,
+                    # 'errorZ': origin.depth_errors['uncertainty'] / 1000,
                     'evaluation': origin.evaluation_mode,
                 })
             lst.append(d)
