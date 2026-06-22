@@ -10,6 +10,48 @@ import subprocess
 from importlib.metadata import distributions
 import inspect
 import json
+from time import perf_counter
+from functools import wraps
+
+
+def timer(func):
+    """
+    Measure and print the execution time of a function.
+
+    This decorator wraps a function, records its start and end time
+    using `time.perf_counter()`, and prints the elapsed execution
+    time after the function completes.
+
+    Args:
+        func: The function to be wrapped.
+
+    Returns:
+        A wrapped function that behaves exactly like the original
+        function while logging its execution time.
+
+    Example:
+        >>> @timer
+        ... def process_data():
+        ...     time.sleep(1)
+        ...
+        >>> process_data()
+        process_data: 1.000123s
+
+    Notes:
+        - Uses `time.perf_counter()` for high-resolution timing.
+        - Preserves the original function's metadata via
+          `functools.wraps`.
+        - Suitable for quick profiling and debugging.
+    """
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start = perf_counter()
+        result = func(*args, **kwargs)
+        elapsed = perf_counter() - start
+        print(f"{func.__name__}: {elapsed:.6f}s")
+        return result
+    return wrapper
 
 
 class Config:
