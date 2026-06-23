@@ -78,6 +78,10 @@ class ProgressMsg:
         return " | ".join(parts)
 
 
+def timestamp(format='%Y-%m-%dT%H-%M-%S'):
+    return datetime.now().strftime(format)
+
+
 def timer(func):
     """
     Measure and print the execution time of a function.
