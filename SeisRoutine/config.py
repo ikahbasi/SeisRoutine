@@ -12,6 +12,7 @@ import inspect
 import json
 from time import perf_counter
 from functools import wraps
+import string
 
 
 class ProgressMsg:
@@ -125,24 +126,42 @@ def timer(func):
 class Config:
     """
     A helper class that converts a dictionary (e.g., parsed from a YAML file)
-    into an object with attribute access. Supports nested dictionaries and 
-    includes utilities for converting back to dictionary form and string representation.
+    into an object with attribute access. Supports nested dictionaries,
+    internal cross-reference resolution, and deferred formatting for
+    external variables (e.g., time) that change at runtime.
     """
     def __init__(self, **entries):
         """
         Initializes the Config object with dictionary entries.
 
         Args:
-            **entries: Arbitrary keyword arguments representing dictionary keys and values.
+            **entries: Arbitrary keyword arguments representing dictionary
+                keys and values.
         """
         self.entries = entries
         self.dict2object()
 
     @classmethod
-    def load(cls, file_path):
+    def load(cls, file_path, resolve=True):
+        """
+        Loads a YAML config file and returns a Config object.
+
+        Args:
+            file_path (str): Path to the YAML file.
+            resolve (bool): If True, resolves internal cross-references on load.
+
+        Returns:
+            Config: A Config object populated with the YAML contents.
+        """
         with open(file_path, "r") as file:
             config_dict = yaml.safe_load(file)
-        return cls(**config_dict)
+
+        cfg = cls(**config_dict)
+
+        if resolve:
+            cfg.resolve()
+
+        return cfg
 
     def dict2object(self):
         """
@@ -153,6 +172,209 @@ class Config:
             if isinstance(value, dict):
                 value = Config(**value)
             setattr(self, key, value)
+
+    def resolve(self, context: dict = None):
+        """
+        Resolves placeholder variables in all string values of the config.
+
+        Two modes depending on whether 'context' is provided:
+
+        Internal mode (context=None):
+            Resolves only placeholders whose values exist within the config itself
+            (e.g., {project.name}, {project.network}).
+            External placeholders like {time.year} are left untouched.
+
+        External mode (context=dict):
+            Resolves only the placeholders present in the given context dict.
+            Internal cross-references between config fields are ignored.
+
+        Args:
+            context (dict, optional): External variables to resolve against.
+                If None, resolves internal config references only.
+        """
+        if context is None:
+            context = self._build_internal_context()
+
+        for _ in range(10):
+            flat = self._flatten()
+            changed = False
+            for dotted_key, value in flat.items():
+                if isinstance(value, str) and '{' in value:
+                    resolved = self._safe_format(value, context)
+                    if resolved != value:
+                        self._set_dotted(dotted_key, resolved)
+                        context[dotted_key] = resolved
+                        changed = True
+            if not changed:
+                break
+
+    def _build_internal_context(self) -> dict:
+        """
+        Builds a lookup dictionary from all internal config values.
+        Includes both dotted paths (e.g., project.name) and
+        top-level Config objects (e.g., project) for nested access.
+
+        Returns:
+            dict: A flat mapping of keys to their current config values.
+        """
+        context = {}
+
+        for dotted_key, value in self._flatten().items():
+            context[dotted_key] = value
+
+        for attr, value in self.__dict__.items():
+            if attr == 'entries':
+                continue
+            context[attr] = value
+
+        return context
+
+    def format(self, value: str, **kwargs) -> str:
+        """
+        Formats a template string with the provided external variables.
+        Intended for strings that still contain unresolved placeholders
+        such as {time.year} or {time.julday}.
+
+        Args:
+            value (str): The template string to format.
+            **kwargs: External variables to inject (e.g., time=t).
+
+        Returns:
+            str: The formatted string.
+
+        Example:
+            pattern = cfg.format(cfg.dataset.path.stream_pattern, time=t)
+        """
+        return value.format(**kwargs)
+
+    def format_path(self, dotted_key: str, **kwargs) -> str:
+        """
+        Retrieves the value at a dotted config key and formats it with
+        the provided external variables.
+
+        Args:
+            dotted_key (str): Dotted path to the config value
+                              (e.g., 'dataset.path.stream_pattern').
+            **kwargs: External variables to inject (e.g., time=t).
+
+        Returns:
+            str: The formatted string.
+
+        Raises:
+            ValueError: If the value at the given key is not a string.
+
+        Example:
+            pattern = cfg.format_path('dataset.path.stream_pattern', time=t)
+        """
+        template = self._get_dotted(dotted_key)
+        if not isinstance(template, str):
+            raise ValueError(f"'{dotted_key}' is not a string: {template!r}")
+        return template.format(**kwargs)
+
+    @staticmethod
+    def _safe_format(template: str, context: dict) -> str:
+        """
+        Formats a template string using only the keys present in context.
+        Placeholders that reference missing keys or unknown attributes
+        (e.g., {time.year} when 'time' is not in context) are left as-is.
+
+        Args:
+            template (str): The template string to format.
+            context (dict): Available substitution values.
+
+        Returns:
+            str: The partially or fully formatted string.
+        """
+        formatter = string.Formatter()
+        result = []
+
+        for literal_text, field_name, format_spec, conversion in formatter.parse(template):
+            result.append(literal_text)
+
+            if field_name is None:
+                continue
+
+            # Extract the root key (e.g., 'time' from 'time.year')
+            root_key = field_name.split('.')[0].split('[')[0]
+
+            if root_key not in context:
+                # Root key not in context → leave the placeholder untouched
+                placeholder = '{' + field_name
+                if conversion:
+                    placeholder += f'!{conversion}'
+                if format_spec:
+                    placeholder += f':{format_spec}'
+                placeholder += '}'
+                result.append(placeholder)
+            else:
+                # Root key exists → let the formatter resolve it normally
+                try:
+                    value = formatter.get_field(field_name, [], context)[0]
+                    value = formatter.convert_field(value, conversion)
+                    value = formatter.format_field(value, format_spec)
+                    result.append(value)
+                except (AttributeError, KeyError, TypeError):
+                    # Attribute access failed → leave the placeholder untouched
+                    placeholder = '{' + field_name
+                    if conversion:
+                        placeholder += f'!{conversion}'
+                    if format_spec:
+                        placeholder += f':{format_spec}'
+                    placeholder += '}'
+                    result.append(placeholder)
+
+        return ''.join(result)
+
+    def _flatten(self, prefix='') -> dict:
+        """
+        Recursively flattens the Config object into a dict of dotted-key paths.
+
+        Args:
+            prefix (str): The current key prefix for nested configs.
+
+        Returns:
+            dict: A flat mapping of dotted paths to leaf values.
+                  e.g., {'project.name': 'Ahar', 'dataset.path.catalog': '...'}
+        """
+        result = {}
+        for attr, value in self.__dict__.items():
+            if attr == 'entries':
+                continue
+            key = attr if not prefix else f'{prefix}.{attr}'
+            if isinstance(value, Config):
+                result.update(value._flatten(prefix=key))
+            else:
+                result[key] = value
+        return result
+
+    def _set_dotted(self, dotted_key: str, value):
+        """
+        Sets a value on the config using a dotted path string.
+
+        Args:
+            dotted_key (str): Dotted path to the target attribute.
+            value: The value to set.
+        """
+        parts = dotted_key.split('.')
+        obj = self
+        for part in parts[:-1]:
+            obj = getattr(obj, part)
+        setattr(obj, parts[-1], value)
+
+    def _get_dotted(self, dotted_key: str):
+        """
+        Retrieves a value from the config using a dotted path string.
+
+        Args:
+            dotted_key (str): Dotted path to the target attribute.
+
+        Returns:
+            The value at the given path.
+        """
+        obj = self
+        for part in dotted_key.split('.'):
+            obj = getattr(obj, part)
+        return obj
 
     def to_dict(self):
         """
@@ -168,7 +390,8 @@ class Config:
             if isinstance(value, Config):
                 value = value.to_dict()
             elif isinstance(value, list):
-                value = [v.to_dict() if isinstance(v, Config) else v for v in value]
+                value = [v.to_dict() if isinstance(v, Config) else v
+                         for v in value]
             result[key] = value
         return result
 
@@ -198,6 +421,13 @@ class Config:
             str: A string representation suitable for debugging.
         """
         return f'Config({self.__dict__})'
+
+    def __format__(self, format_spec):
+        """
+        Allows Config objects to be used inside f-strings and str.format()
+        calls.
+        """
+        return str(self)
 
 
 def configure_logging(
