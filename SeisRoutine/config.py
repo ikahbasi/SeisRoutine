@@ -490,8 +490,9 @@ def configure_logging(
     if mode in ('file', 'both'):
         os.makedirs(filepath, exist_ok=True)
 
-        if filename_timestamp == 'now':
-            filename_timestamp = timestamp()
+        if filename_timestamp:
+            if filename_timestamp == 'now':
+                filename_timestamp = timestamp()
 
         filename_parts = []
         if filename_prefix:
