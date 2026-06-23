@@ -138,6 +138,12 @@ class Config:
         self.entries = entries
         self.dict2object()
 
+    @classmethod
+    def load(cls, file_path):
+        with open(file_path, "r") as file:
+            config_dict = yaml.safe_load(file)
+        return cls(**config_dict)
+
     def dict2object(self):
         """
         Recursively sets dictionary keys as attributes on the object.
@@ -193,13 +199,6 @@ class Config:
         """
         return f'Config({self.__dict__})'
 
-def load_config(file_path):
-    """
-    Docstring
-    """
-    with open(file_path, 'r') as file:
-        config_dict = yaml.safe_load(file)
-        return Config(**config_dict)
 
 def configure_logging(level,
                       log_format='%(asctime)s - [%(levelname)s] - %(message)s',
