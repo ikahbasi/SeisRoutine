@@ -200,10 +200,16 @@ class Config:
         return f'Config({self.__dict__})'
 
 
-def configure_logging(level,
-                      log_format='%(asctime)s - [%(levelname)s] - %(message)s',
-                      mode='console', colored_console=True,
-                      filename_prefix='', filename='app.log', filepath='.'):
+def configure_logging(
+        level,
+        format='%(asctime)s - [%(levelname)s] - %(message)s',
+        mode='console',
+        colored_console=True,
+        filepath='.',
+        filename_prefix=None,
+        filename='app',
+        filename_timestamp='now',
+    ):
     """
     Configure logging settings based on mode.
 
@@ -212,6 +218,13 @@ def configure_logging(level,
     mode (str): Mode of logging - 'console', 'file', or 'both'.
     filename (str): The filename for logging to a file (if needed).
     """
+    valid_modes = {'console', 'file', 'both'}
+    if mode not in valid_modes:
+        raise ValueError(
+            f"Invalid logging mode: '{mode}'. "
+            f"Expected one of: {', '.join(sorted(valid_modes))}."
+        )
+
     if not isinstance(level, int):
         numeric_level = getattr(logging, level.upper(), None)
     else:
@@ -226,37 +239,52 @@ def configure_logging(level,
 
     if mode in ('console', 'both'):
         if colored_console:
-            coloredlogs.install(level=numeric_level, fmt=log_format, logger=logger,
-                                level_styles={
-                                    'debug': {'color': 'blue'},
-                                    'info': {'color': 'green'},
-                                    'warning': {'color': 'yellow'},
-                                    'error': {'color': 'red'},
-                                    'critical': {'color': 'magenta', 'bold': True},
-                                })
+            coloredlogs.install(
+                level=numeric_level,
+                fmt=format,
+                logger=logger,
+                level_styles={
+                    'debug': {'color': 'blue'},
+                    'info': {'color': 'green'},
+                    'warning': {'color': 'yellow'},
+                    'error': {'color': 'red'},
+                    'critical': {'color': 'magenta', 'bold': True},
+                    }
+                )
         else:
             console_handler = logging.StreamHandler()
             console_handler.setLevel(numeric_level)
-            console_handler.setFormatter(logging.Formatter(log_format))
+            console_handler.setFormatter(logging.Formatter(format))
             logger.addHandler(console_handler)
 
     if mode in ('file', 'both'):
-        if filename == 'now':
-            today_str = datetime.today().strftime('%Y-%m-%d_%H-%M-%S')
-            filename = f'{today_str}.log'
         os.makedirs(filepath, exist_ok=True)
-        filename = f'{filename_prefix}_{filename}'
+
+        if filename_timestamp == 'now':
+            filename_timestamp = timestamp()
+
+        filename_parts = []
+        if filename_prefix:
+            filename_parts.append(filename_prefix)
+        filename_parts.append(filename)
+        if filename_timestamp:
+            filename_parts.append(filename_timestamp)
+        filename = '_'.join(filename_parts) + '.log'
+       
         filename = os.path.join(filepath, filename)
-        file_handler = logging.FileHandler(filename)
+        file_handler = logging.FileHandler(
+            filename,
+            encoding='utf-8',
+        )
         file_handler.setLevel(numeric_level)
-        file_handler.setFormatter(logging.Formatter(log_format))
+        file_handler.setFormatter(logging.Formatter(format))
         logger.addHandler(file_handler)
+        logger.warning(f"Logging Starts in:\n{filename}")
 
     logger.propagate = False
     for name in logging.root.manager.loggerDict.keys():
         if name not in ('my_module', '__main__'):
             logging.getLogger(name).setLevel(logging.WARNING)
-    print(f"Logging Starts in:\n{filename}")
 
 
 class RuntimeLocation:
