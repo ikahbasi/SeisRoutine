@@ -15,6 +15,69 @@ from functools import wraps
 import string
 
 
+def dict_to_object(data_dict):
+    """
+    Converts a dictionary into a generic object.
+    Nested dictionaries are recursively converted into nested objects.
+    """
+    class GenericObject:
+        pass
+    
+    obj = GenericObject()
+    
+    for key, value in data_dict.items():
+        if isinstance(value, dict):
+            # فراخوانی بازگشتی (Recursive) برای دیکشنری‌های تو در تو
+            value = dict_to_object(value)
+        setattr(obj, key, value)
+        
+    return obj
+
+
+def build_paths(
+        base_path: str | Path,
+        **kwargs: str | Path
+    ) -> dict[str, Path]:
+    """
+    Build a dictionary of paths relative to a base directory.
+
+    Parameters
+    ----------
+    base_path : str or Path
+        Base directory used to construct all paths.
+    **kwargs : str or Path
+        Named path fragments. Each keyword becomes a key in the returned
+        dictionary, and its value is appended to `base_path`.
+
+    Returns
+    -------
+    dict[str, Path]
+        A dictionary mapping each keyword to its corresponding Path object.
+
+    Examples
+    --------
+    >>> build_paths("/data", train="train", test="test")
+    {
+        "train": Path("/data/train"),
+        "test": Path("/data/test"),
+    }
+    """
+    base_path = Path(base_path)
+
+    output = {}
+    msg = ["The following paths will be used:"]
+
+    for key, val in kwargs.items():
+        path = base_path / val
+        output[key] = path
+        msg.append(f"{key}:\t\t{path}")
+
+    logging.info("\n".join(msg))
+    output = dict_to_object(output)
+    
+    return output
+
+
 class ProgressMsg:
     """
     Utility class for building formatted progress messages.
@@ -406,6 +469,12 @@ class Config:
             str: A YAML-formatted string.
         """
         return yaml.dump(self.to_dict(), **yaml_kwargs)
+    
+    def write(self, output, format='YAML'):
+        if format=='YAML':
+            with open(output, 'w') as file:
+                self.to_yaml(stream=file, default_flow_style=False, indent=4)
+
 
     def __str__(self):
         """
@@ -930,6 +999,7 @@ class EnvironmentInfo:
 
         lines = []
 
+        lines.append("\n")
         lines.append("=" * 80)
         lines.append("Execution Environment")
         lines.append("=" * 80)
