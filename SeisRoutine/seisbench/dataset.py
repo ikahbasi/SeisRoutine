@@ -2,6 +2,32 @@ from math import sqrt
 import numpy as np
 from seisbench.util import stream_to_array
 import SeisRoutine.catalog as src
+import re
+
+
+def build_phase_mapper(columns):
+    """
+    Extract phase arrival columns and map them to P/S.
+
+    Example:
+        trace_Pg_arrival_sample -> P
+        trace_Sg_arrival_sample -> S
+        trace_Pn_arrival_sample -> P
+        trace_Sg 2_arrival_sample -> S
+    """
+    pattern = re.compile(r"^trace_(.+?)_arrival_sample$")
+
+    mapper = {}
+
+    for col in columns:
+        match = pattern.match(col)
+
+        if match:
+            phase_name = match.group(1).strip()
+            first_letter = phase_name[0].upper()
+            mapper[col] = first_letter
+
+    return mapper
 
 
 class MetadataBuilder:
