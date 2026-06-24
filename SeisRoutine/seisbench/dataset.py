@@ -1,9 +1,6 @@
 from math import sqrt
-
 import numpy as np
-
 from seisbench.util import stream_to_array
-
 import SeisRoutine.catalog as src
 
 
