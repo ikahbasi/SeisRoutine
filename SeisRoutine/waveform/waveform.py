@@ -18,10 +18,12 @@ class StreamCache:
             self,
             root: str,
             pattern_path: str,
+            merge_method=None,
             **pattern_vars
         ):
         self.root = root
         self.pattern_path = pattern_path
+        self.merge_method = merge_method
         self.pattern_vars = pattern_vars
         self.stream = None
         self.stations: list[str] = []
@@ -117,7 +119,8 @@ class StreamCache:
     def _preprocess(self):
         self.stream.merge(-1)
         self.stream.detrend("constant")
-        self.stream.merge()
+        if self.merge_method:
+            self.stream.merge(method=self.merge_method)
 
 
 
