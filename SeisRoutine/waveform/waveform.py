@@ -240,7 +240,12 @@ class SpikeDetector:
         mean = data.mean()
         min_ = abs(data.min() - mean)
         max_ = abs(data.max() - mean)
-        ratio = min(min_, max_) / max(min_, max_)
+        min_, max_ = min(min_, max_),  max(min_, max_)
+        # print(f"Invalid values: min_={min_}, max_={max_}")
+        if max_ == 0:
+            ratio = np.inf
+        else:
+            ratio = min_ / max_
         spikes = (
             np.array([np.argmax(np.abs(data))])
             if ratio < threshold
