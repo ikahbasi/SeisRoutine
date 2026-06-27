@@ -13,6 +13,245 @@ import glob
 import obspy as obs
 from scipy import stats
 import pywt
+from scipy.signal import find_peaks
+from dataclasses import dataclass
+
+
+@dataclass
+class SpikeDetectionResult:
+    detected: bool
+    spike_indices: np.ndarray
+    spike_amplitudes: np.ndarray
+    values: dict
+
+
+class SpikeDetector:
+
+    def __init__(
+            self,
+            data
+        ):
+        self.data = np.asarray(data, dtype=float).ravel()
+
+    def _build_result(
+            self,
+            spike_indices,
+            **values
+        ):
+        spike_indices = np.asarray(spike_indices, dtype=int)
+        return SpikeDetectionResult(
+            detected=len(spike_indices) > 0,
+            spike_indices=spike_indices,
+            spike_amplitudes=self.data[spike_indices]
+            if len(spike_indices)
+            else np.array([], dtype=self.data.dtype),
+            values=values,
+        )
+
+    def zscore(
+            self,
+            threshold=10
+        ):
+        z_score = stats.zscore(self.data)
+        spikes = np.where(z_score > threshold)[0]
+        result = self._build_result(
+            spikes,
+            zscore=z_score,
+            threshold=threshold,
+        )
+        return result
+
+    def differential(
+            self,
+            dt=0.01,
+            threshold=100.0
+        ):
+        diffs = np.abs(np.diff(self.data)) / dt
+        spikes = np.where(diffs > threshold)[0]
+        result = self._build_result(
+            spikes,
+            differential=diffs,
+            threshold=threshold,
+            dt=dt,
+        )
+        return result
+
+    def mad(
+            self,
+            threshold=6
+        ):
+        normalizing_factor = 0.6745
+        median = np.median(self.data)
+        mad = np.median(np.abs(self.data - median))
+        modified_zscore = np.abs(
+            normalizing_factor *
+            (self.data - median) /
+            (mad + 1e-8)
+        )
+        spikes = np.where(modified_zscore > threshold)[0]
+        result = self._build_result(
+            spikes,
+            median=median,
+            mad=mad,
+            modified_zscore=modified_zscore,
+            threshold=threshold,
+        )
+        return result
+
+    def prominence(
+            self,
+            prominence=5
+        ):
+        peaks, properties = find_peaks(
+            np.abs(self.data),
+            prominence=prominence,
+        )
+        result = self._build_result(
+            peaks,
+            prominence=properties["prominences"],
+            threshold=prominence,
+        )
+        return result
+
+    def wavelet(
+            self,
+            wavelet="db4",
+            level=4,
+            coeffs_index=-1,
+            threshold=3.5,
+        ):
+        coeffs = pywt.wavedec(self.data, wavelet, level=level)
+        detail = coeffs[coeffs_index]
+        std = np.std(detail)
+        spike_locs = np.where(np.abs(detail) > threshold * std)[0]
+        factor = len(self.data) / len(detail)
+        indices = np.round(spike_locs * factor).astype(int)
+        result = self._build_result(
+            indices,
+            detail_coefficients=detail,
+            std=std,
+            threshold=threshold,
+        )
+        return result
+
+    def variance(
+            self,
+            start_idx_noise=0,
+            end_idx_noise=-1,
+            threshold=5,
+        ):
+        noise = self.data[start_idx_noise:end_idx_noise]
+        variance = noise.var().item()
+        max_amplitude = np.abs(noise).max()
+        if max_amplitude > threshold * variance:
+            spike_idx = np.array([np.argmax(np.abs(noise)) + start_idx_noise])
+        else:
+            spike_idx = np.array([], dtype=int)
+
+        result = self._build_result(
+            spike_idx,
+            variance=variance,
+            max_amplitude=max_amplitude,
+            threshold=threshold,
+        )
+        return result
+
+    def hampel(
+            self,
+            window_size=161,
+            n_sigmas=3,
+        ):
+        data = self.data.copy()
+        half_window = window_size // 2
+        spike_mask = np.zeros(len(data), dtype=bool)
+        filtered = data.copy()
+        for i in range(len(data)):
+            start = max(0, i - half_window)
+            end = min(i + half_window + 1, len(data))
+            window = data[start:end]
+            median = np.median(window)
+            mad = np.median(np.abs(window - median))
+            if mad == 0:
+                continue
+            if np.abs(data[i] - median) > n_sigmas * 1.4826 * mad:
+                spike_mask[i] = True
+                filtered[i] = median
+        spikes = np.where(spike_mask)[0]
+
+        result = self._build_result(
+            spikes,
+            filtered=filtered,
+            spike_mask=spike_mask,
+            window_size=window_size,
+            n_sigmas=n_sigmas,
+        )
+        return result
+
+    def skewness(
+            self,
+            threshold=5,
+            preprocessing=False,
+        ):
+        data = self.data.copy()
+        if preprocessing:
+            data -= data.mean()
+            data[~np.isfinite(data)] = 0
+        s = stats.skew(data, bias=False)
+        spikes = (
+            np.array([np.argmax(np.abs(data))])
+            if abs(s) > threshold
+            else np.array([], dtype=int)
+        )
+        result = self._build_result(
+            spikes,
+            skewness=s,
+            threshold=threshold
+        )
+        return result
+
+    def kurtosis(
+            self,
+            threshold=10,
+            fisher=False,
+            preprocessing=False,
+        ):
+        data = self.data.copy()
+        if preprocessing:
+            data -= data.mean()
+            data[~np.isfinite(data)] = 0
+        k = stats.kurtosis(data, fisher=fisher, bias=False)
+        spikes = (
+            np.array([np.argmax(np.abs(data))])
+            if k > threshold
+            else np.array([], dtype=int)
+        )
+        result = self._build_result(
+            spikes,
+            kurtosis=k,
+            threshold=threshold,
+        )
+        return result
+
+    def min_max_ratio(
+            self,
+            threshold=0.5,
+        ):
+        data = self.data
+        mean = data.mean()
+        min_ = abs(data.min() - mean)
+        max_ = abs(data.max() - mean)
+        ratio = min(min_, max_) / max(min_, max_)
+        spikes = (
+            np.array([np.argmax(np.abs(data))])
+            if ratio < threshold
+            else np.array([], dtype=int)
+        )
+        result = self._build_result(
+            spikes,
+            ratio=ratio,
+        )
+
+        return result
 
 
 class SNR:
