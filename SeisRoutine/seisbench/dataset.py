@@ -5,14 +5,17 @@ import SeisRoutine.catalog as src
 import re
 
 
-def build_phase_mapper(columns):
+def build_phase_mapper(
+        columns,
+        families={"P", "S"},
+    ):
     """
-    Extract phase arrival columns and map them to P/S.
+    Map arrival columns to their phase family.
 
     Example:
-        trace_Pg_arrival_sample -> P
-        trace_Sg_arrival_sample -> S
-        trace_Pn_arrival_sample -> P
+        trace_Pg_arrival_sample  -> P
+        trace_Pn_arrival_sample  -> P
+        trace_Sg_arrival_sample  -> S
         trace_Sg 2_arrival_sample -> S
     """
     pattern = re.compile(r"^trace_(.+?)_arrival_sample$")
@@ -21,13 +24,36 @@ def build_phase_mapper(columns):
 
     for col in columns:
         match = pattern.match(col)
+        if not match:
+            continue
 
-        if match:
-            phase_name = match.group(1).strip()
-            first_letter = phase_name[0].upper()
-            mapper[col] = first_letter
+        phase = match.group(1).strip()
+        family = phase[0].upper()
+
+        if family in families:
+            mapper[col] = family
 
     return mapper
+
+
+def find_ps_pairs(
+        metadata
+    ):
+    """
+    Return a boolean mask indicating rows that contain
+    both P and S arrival picks.
+    """
+    mapper = build_phase_mapper(metadata.columns)
+
+    p_cols = [col for col, phase in mapper.items() if phase == "P"]
+    s_cols = [col for col, phase in mapper.items() if phase == "S"]
+
+    p_exists = metadata[p_cols].notna().any(axis=1) if p_cols else False
+    s_exists = metadata[s_cols].notna().any(axis=1) if s_cols else False
+
+    ps_pairs = p_exists & s_exists
+
+    return ps_pairs
 
 
 class MetadataBuilder:
