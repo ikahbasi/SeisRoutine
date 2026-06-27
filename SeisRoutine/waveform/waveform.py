@@ -11,6 +11,188 @@ import re
 import os
 import glob
 import obspy as obs
+from scipy import stats
+import pywt
+
+
+class SNR:
+    """
+    A utility class for computing different SNR estimators
+    in time, frequency, statistical, and wavelet domains.
+    """
+
+    def __init__(
+            self,
+            data,
+            sps,
+            noise_window,
+            signal_window,
+        ):
+        
+        self.data = np.asarray(data)
+        self.sps = sps
+        self.noise_window = noise_window
+        self.signal_window = signal_window
+
+        # Ensure shape is (channels, samples)
+        if self.data.ndim == 1:
+            self.data = self.data[np.newaxis, :]
+        
+        self._extract_windows(
+            noise_window,
+            signal_window,
+        )
+
+    def _extract_windows(
+            self,
+            noise_window,
+            signal_window,
+        ):
+        """
+        Extract noise and signal segments from data.
+        """
+
+        n_samples = self.data.shape[1]
+
+        sn, en = noise_window
+        ss, es = signal_window
+
+        sn = max(0, sn)
+        ss = max(0, ss)
+
+        en = min(en, n_samples)
+        es = min(es, n_samples)
+
+        if sn >= en:
+            raise ValueError("Invalid noise_window.")
+        if ss >= es:
+            raise ValueError("Invalid signal_window.")
+
+        self.noise = self.data[:, sn:en]
+        self.signal = self.data[:, ss:es]
+
+    @staticmethod
+    def _compute_power(
+            data,
+            axis=1,
+            domain='time',
+        ):
+        
+        n = data.shape[axis]
+
+        if domain == 'time':
+            power = 1 / n * np.sum(np.abs(data) ** 2, axis=axis)
+
+        elif domain == 'frequency':
+            power = 1 / (n ** 2) * np.sum(np.abs(data) ** 2, axis=axis)
+
+        else:
+            raise ValueError("domain must be 'time' or 'frequency'")
+        
+        return power
+
+    def power_in_time(
+            self,
+            epsilon=1e-8,
+            axis_power=1,
+        ):
+
+        p_signal = self._compute_power(
+            data=self.signal,
+            domain='time',
+            axis=axis_power
+        )
+        p_noise = self._compute_power(
+            data=self.noise,
+            domain='time',
+            axis=axis_power
+        ) + epsilon
+
+        return p_signal / p_noise
+
+    def power_in_freq(
+            self,
+            epsilon=1e-8,
+            axis_power=1,
+        ):
+
+        noise_fft = np.fft.fft(self.noise, axis=1)
+        signal_fft = np.fft.fft(self.signal, axis=1)
+
+        p_signal = self._compute_power(
+            data=signal_fft,
+            domain='frequency',
+            axis=axis_power
+        )
+        p_noise = self._compute_power(
+            data=noise_fft,
+            domain='frequency',
+            axis=axis_power
+        ) + epsilon
+
+        return p_signal / p_noise
+
+    def mad(
+            self,
+        ):
+
+        noise_mad = stats.median_abs_deviation(self.noise, axis=1)
+        signal_mad = stats.median_abs_deviation(self.signal, axis=1)
+
+        return signal_mad / noise_mad
+
+    def percentile(
+            self,
+            lbp=25,
+            hbp=95,
+        ):
+
+        snr = []
+
+        for sig, noi in zip(self.signal, self.noise):
+            sig_filt = sig[
+                (sig >= np.percentile(sig, lbp)) &
+                (sig <= np.percentile(sig, hbp))
+            ]
+
+            noi_filt = noi[
+                (noi >= np.percentile(noi, lbp)) &
+                (noi <= np.percentile(noi, hbp))
+            ]
+
+            snr.append(np.median(sig_filt) / np.median(noi_filt))
+
+        return np.asarray(snr)
+
+    def cwt(
+            self,
+            scales=np.arange(1, 256),
+            wavelet="morl",
+        ):
+
+        data = np.concatenate([self.noise, self.signal], axis=1)
+        n_noise = self.noise.shape[1]
+
+        snr = []
+
+        for trace in data:
+            coef, _ = pywt.cwt(
+                trace,
+                scales=scales,
+                wavelet=wavelet,
+                sampling_period=1 / self.sps,
+            )
+
+            energy = np.mean(np.abs(coef), axis=0)
+
+            noise_energy = energy[:n_noise]
+            signal_energy = energy[n_noise:]
+
+            snr.append(
+                np.mean(signal_energy) / np.mean(noise_energy)
+            )
+
+        return np.asarray(snr)
 
 
 class StreamCache:
