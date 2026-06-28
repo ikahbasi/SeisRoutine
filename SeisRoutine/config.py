@@ -141,6 +141,16 @@ class ProgressMsg:
 
         return " | ".join(parts)
 
+    @classmethod
+    def print(self, current, all, step, label="Label"):
+        if current % step == 0:
+            msg = self.build(Events=[current, all])
+            msg = " : ".join([
+                label,
+                msg,
+            ])
+            logging.info(msg)
+
 
 def timestamp(format='%Y-%m-%dT%H-%M-%S'):
     return datetime.now().strftime(format)
