@@ -14,6 +14,34 @@ class DerivativeAnomalyResult:
     spike_mask: np.ndarray
 
 
+@dataclass
+class RepeatedSegment:
+    """
+    Container describing one repeated-value segment.
+    """
+
+    start: int
+    end: int
+    value: float
+    length: int
+    is_clipped: bool
+
+
+@dataclass
+class RepeatedValueResult:
+    """
+    Container for repeated-value detection results.
+    """
+
+    indices: np.ndarray
+    repeated_mask: np.ndarray
+    clipped_mask: np.ndarray
+    repeated_segments: list[RepeatedSegment]
+    clipped_segments: list[RepeatedSegment]
+    total_repeated_samples: int
+    total_clipped_samples: int
+
+
 class DerivativeDetector:
     """
     Detect anomalies using the first derivative of a signal.
@@ -177,3 +205,171 @@ class DerivativeDetector:
         )
 
         return result
+
+
+class RepeatedValueDetector:
+    """
+    Detect repeated-value and clipped segments.
+
+    Two anomaly types are supported:
+
+    - Repeated-value segments
+    - Clipped segments (repeated values close to the signal peak)
+    """
+
+    def __init__(
+        self,
+        min_run_length=2,
+        tolerance=0.0,
+        relation_to_max=0.9,
+    ):
+        """
+        Initialize the detector.
+
+        Parameters
+        ----------
+        min_run_length : int, default=2
+            Minimum number of consecutive repeated samples.
+
+        tolerance : float, default=0.0
+            Maximum absolute difference between repeated samples.
+
+        relation_to_max : float, default=0.9
+            Relative threshold used to identify clipped segments.
+            A repeated segment is considered clipped if
+
+                abs(value) >= relation_to_max * max(abs(signal))
+        """
+        self.min_run_length = min_run_length
+        self.tolerance = tolerance
+        self.relation_to_max = relation_to_max
+
+    def _detect_repeated(
+        self,
+        signal,
+    ):
+        """
+        Detect repeated-value segments.
+        """
+
+        signal = np.asarray(signal)
+
+        repeated_mask = np.zeros(
+            signal.shape,
+            dtype=bool,
+        )
+
+        segments = []
+        start = 0
+        for i in range(1, len(signal) + 1):
+            if i == len(signal):
+                end_of_run = True
+            else:
+                end_of_run = (
+                    abs(signal[i] - signal[start])
+                    > self.tolerance
+                )
+            if end_of_run:
+                run_length = i - start
+                if run_length >= self.min_run_length:
+                    repeated_mask[start:i] = True
+                    segments.append(
+                        RepeatedSegment(
+                            start=start,
+                            end=i - 1,
+                            value=float(signal[start]),
+                            length=run_length,
+                            is_clipped=False,
+                        )
+                    )
+
+                start = i
+
+        return repeated_mask, segments
+
+    def _detect_clipped(
+        self,
+        signal,
+        repeated_segments,
+    ):
+        """
+        Identify clipped segments among repeated segments.
+        """
+
+        max_abs = np.max(np.abs(signal))
+
+        clipped_mask = np.zeros(
+            signal.shape,
+            dtype=bool,
+        )
+
+        clipped_segments = []
+        for segment in repeated_segments:
+            if (
+                abs(segment.value)
+                >= self.relation_to_max * max_abs
+            ):
+                clipped_mask[
+                    segment.start: segment.end + 1
+                ] = True
+
+                clipped_segments.append(
+                    RepeatedSegment(
+                        start=segment.start,
+                        end=segment.end,
+                        value=segment.value,
+                        length=segment.length,
+                        is_clipped=True,
+                    )
+                )
+
+        return clipped_mask, clipped_segments
+
+    def detect(
+        self,
+        signal,
+    ):
+        """
+        Detect repeated-value and clipped segments.
+
+        Parameters
+        ----------
+        signal : array_like
+            Input signal.
+
+        Returns
+        -------
+        RepeatedValueResult
+            Detection results.
+        """
+
+        signal = np.asarray(signal)
+
+        repeated_mask, repeated_segments = (
+            self._detect_repeated(signal)
+        )
+
+        clipped_mask, clipped_segments = (
+            self._detect_clipped(
+                signal,
+                repeated_segments,
+            )
+        )
+
+        indices = np.where(
+            repeated_mask | clipped_mask
+        )[0]
+
+        return RepeatedValueResult(
+            indices=indices,
+            repeated_mask=repeated_mask,
+            clipped_mask=clipped_mask,
+            repeated_segments=repeated_segments,
+            clipped_segments=clipped_segments,
+            total_repeated_samples=int(
+                repeated_mask.sum()
+            ),
+            total_clipped_samples=int(
+                clipped_mask.sum()
+            ),
+        )
