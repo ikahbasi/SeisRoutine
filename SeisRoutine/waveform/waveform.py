@@ -281,7 +281,9 @@ class SNR:
         # Ensure shape is (channels, samples)
         if self.data.ndim == 1:
             self.data = self.data[np.newaxis, :]
-        
+
+        self.data = self.data - self.data.mean(axis=1, keepdims=True)
+
         self._extract_windows(
             noise_window,
             signal_window,
@@ -389,22 +391,37 @@ class SNR:
             self,
             lbp=25,
             hbp=95,
+            method=1,
         ):
 
         snr = []
 
-        for sig, noi in zip(self.signal, self.noise):
-            sig_filt = sig[
-                (sig >= np.percentile(sig, lbp)) &
-                (sig <= np.percentile(sig, hbp))
-            ]
+        for signal, noise in zip(self.signal, self.noise):
+            signal = np.abs(signal)
+            noise = np.abs(noise)
 
-            noi_filt = noi[
-                (noi >= np.percentile(noi, lbp)) &
-                (noi <= np.percentile(noi, hbp))
-            ]
+            if method ==  1:
 
-            snr.append(np.median(sig_filt) / np.median(noi_filt))
+                signal_p = np.percentile(signal, hbp)
+                noise_p = 1.4826 * stats.median_abs_deviation(noise)
+
+            elif method == 2:
+
+                signal = signal[
+                    (signal >= np.percentile(signal, lbp)) &
+                    (signal <= np.percentile(signal, hbp))
+                ]
+                signal_p = stats.median_abs_deviation(signal)
+
+                noise = noise[
+                    (noise >= np.percentile(noise, lbp)) &
+                    (noise <= np.percentile(noise, hbp))
+                ]
+                noise_p = stats.median_abs_deviation(noise)
+
+            snr.append(
+                signal_p / noise_p
+            )
 
         return np.asarray(snr)
 
