@@ -136,20 +136,20 @@ class ProgressMsg:
         parts = [subject]
 
         for key, (part, total) in kwargs.items():
+            width = len(str(total))
             parts.append(
-                f"{part}/{total} ({cls.pct(part, total):.2f}%) {key}"
+                f"{part:>{width}}/{total} ({cls.pct(part, total):>5.2f}%) {key}"
             )
 
         return " | ".join(parts)
 
     @classmethod
-    def print(self, current, all, step, label="Label"):
-        if current % step == 0:
-            msg = self.build(Events=[current, all])
-            msg = " : ".join([
-                label,
-                msg,
-            ])
+    def print(self, part, total, step, subject="Passed"):
+        if part % step == 0:
+            msg = self.build(
+                subject=subject,
+                Events=[part, total]
+            )
             logging.info(msg)
 
 
