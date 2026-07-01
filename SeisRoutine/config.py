@@ -13,6 +13,7 @@ import json
 from time import perf_counter
 from functools import wraps
 import string
+import psutil
 
 
 def dict_to_object(data_dict):
@@ -882,17 +883,47 @@ class EnvironmentInfo:
         """
         Return system and Python information.
         """
-
-        return {
-            "python_version": platform.python_version(),
-            "python_implementation": platform.python_implementation(),
+        ram = psutil.virtual_memory()
+        info = {
             "platform": platform.platform(),
+            "Node Name:": platform.node(),
             "machine": platform.machine(),
             "processor": platform.processor(),
+             # Python information
+            "python_version": platform.python_version(),
+            "python_implementation": platform.python_implementation(),
             "executable": sys.executable,
             "conda_env": os.environ.get("CONDA_DEFAULT_ENV"),
             "virtual_env": os.environ.get("VIRTUAL_ENV"),
+            # CPU information
+            "CPU Cores (Physical)": psutil.cpu_count(logical=False),
+            "CPU Cores (Logical)": psutil.cpu_count(logical=True),
+            "CPU Frequency": f"{psutil.cpu_freq().max} MHz",
+            # RAM information
+            "Total RAM": f"{ram.total / (1024**3):.2f} GB",
+            "Available RAM": f"{ram.available / (1024**3):.2f} GB",
+            "Used RAM": f"{ram.used / (1024**3):.2f} GB",
         }
+        try:
+            import GPUtil
+            gpus = GPUtil.getGPUs()
+
+            if not gpus:
+                info.update({
+                    "GPU": "No GPU detected."
+                })
+            else:
+                for num, gpu in enumerate(gpus):
+                    info.update({
+                        f"GPU({num}) Name": gpu.name,
+                        f"GPU({num}) Memory Total": f"{gpu.memoryTotal} MB",
+                        f"GPU({num}) Memory Free": f"{gpu.memoryFree} MB",
+                        f"GPU({num}) Memory Used": f"{gpu.memoryUsed} MB",
+                        f"GPU({num}) Load": f"{gpu.load * 100} %",
+                    })
+        except ImportError:
+            print("\nGPUtil not installed. GPU info not available.")
+        return info
 
     @staticmethod
     def git_commit():
