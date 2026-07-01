@@ -1,5 +1,6 @@
 from math import sqrt
 import numpy as np
+import pandas as pd
 from seisbench.util import stream_to_array
 import SeisRoutine.catalog as src
 import re
@@ -469,3 +470,90 @@ class MetadataBuilder:
             **self.build_station_parameters(),
             **self.build_path_parameters(),
         }
+
+
+def build_split_column(
+    df: pd.DataFrame,
+    mask: pd.Series | None = None,
+    split_ratios: dict = None,
+    shuffle: bool = True,
+    random_state: int | None = None,
+    ) -> pd.Series:
+    """
+    Create a train/dev/test split column for a dataset without modifying it in-place.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Input dataframe.
+
+    mask : pd.Series or None
+        Boolean mask to filter rows before splitting.
+        If None, all rows are used.
+
+    split_ratios : dict
+        Dictionary with keys: 'train', 'dev', 'test'.
+        Values must sum to 1.0.
+
+    shuffle : bool
+        Whether to shuffle rows before splitting.
+
+    random_state : int or None
+        Seed for reproducible shuffling.
+
+    column_name : str
+        Name of the output column.
+
+    Returns
+    -------
+    pd.Series
+        A Series aligned with df.index containing split labels.
+    """
+
+    if split_ratios is None:
+        split_ratios = {
+            "train": 0.9,
+            "dev": 0.05,
+            "test": 0.05,
+        }
+
+    if not np.isclose(sum(split_ratios.values()), 1.0):
+        raise ValueError("split_ratios must sum to 1.0")
+
+    if mask is None:
+        selected_mask = pd.Series(True, index=df.index)
+    elif isinstance(mask, str):
+        if mask not in df.columns:
+            raise KeyError(f"Column '{mask}' not found in dataframe.")
+        selected_mask = df[mask]
+    else:
+        selected_mask = pd.Series(mask, index=df.index)
+
+    if selected_mask.dtype != bool:
+        raise TypeError(
+            "mask must be a boolean Series or the name of a boolean column."
+        )
+
+    selected_idx = df.index[selected_mask].to_numpy()
+
+    selected_idx = np.array(selected_idx)
+
+    if shuffle:
+        rng = np.random.default_rng(random_state)
+        rng.shuffle(selected_idx)
+
+    n_total = len(selected_idx)
+    n_train = int(n_total * split_ratios["train"])
+    n_dev = int(n_total * split_ratios["dev"])
+
+    split = pd.Series(
+        "undefined",
+        index=df.index,
+        name="split"
+    )
+
+    split.loc[selected_idx[: n_train]] = "train"
+    split.loc[selected_idx[n_train: n_train + n_dev]] = "dev"
+    split.loc[selected_idx[n_train + n_dev:]] = "test"
+
+    return split
