@@ -14,6 +14,7 @@ from time import perf_counter
 from functools import wraps
 import string
 import psutil
+import re
 
 
 def dict_to_object(data_dict):
@@ -201,9 +202,15 @@ class Config:
     """
     A helper class that converts a dictionary (e.g., parsed from a YAML file)
     into an object with attribute access. Supports nested dictionaries,
-    internal cross-reference resolution, and deferred formatting for
-    external variables (e.g., time) that change at runtime.
+    nested lists (including lists of dictionaries), internal cross-reference
+    resolution, and deferred formatting for external variables (e.g., time)
+    that change at runtime.
     """
+
+    # Matches a single path component optionally followed by one or more
+    # list indices, e.g. "augmentation", "augmentation[3]", "a[0][1]".
+    _PART_RE = re.compile(r'^([^\[\]]+)((?:\[\d+\])*)$')
+
     def __init__(self, **entries):
         """
         Initializes the Config object with dictionary entries.
@@ -241,15 +248,32 @@ class Config:
         """
         Recursively sets dictionary keys as attributes on the object.
         Nested dictionaries are converted into nested Config objects.
+        Lists are walked recursively so that dictionaries nested inside
+        lists (and lists of lists) are also converted into Config objects.
         """
         for key, value in self.entries.items():
-            if isinstance(value, dict):
-                value = Config(**value)
-            setattr(self, key, value)
+            setattr(self, key, self._convert(value))
+
+    @classmethod
+    def _convert(cls, value):
+        """
+        Recursively converts dicts into Config objects and walks into
+        lists/tuples so nested dicts inside them are converted too.
+        """
+        if isinstance(value, dict):
+            return Config(**value)
+        elif isinstance(value, list):
+            return [cls._convert(v) for v in value]
+        elif isinstance(value, tuple):
+            return tuple(cls._convert(v) for v in value)
+        else:
+            return value
 
     def resolve(self, context: dict = None):
         """
-        Resolves placeholder variables in all string values of the config.
+        Resolves placeholder variables in all string values of the config,
+        including strings nested inside lists (e.g., items of the
+        'augmentation' list).
 
         Two modes depending on whether 'context' is provided:
 
@@ -274,7 +298,7 @@ class Config:
             changed = False
             for dotted_key, value in flat.items():
                 if isinstance(value, str) and '{' in value:
-                    resolved = self._safe_format(value, context)
+                    resolved = self._resolve_template(value, context)
                     if resolved != value:
                         self._set_dotted(dotted_key, resolved)
                         context[dotted_key] = resolved
@@ -346,6 +370,73 @@ class Config:
         return template.format(**kwargs)
 
     @staticmethod
+    def _whole_placeholder(template: str):
+        """
+        Checks whether a template string consists of EXACTLY one
+        placeholder with no surrounding literal text, no conversion
+        (e.g. '!r'), and no format spec (e.g. ':.2f').
+
+        Examples:
+            "{phase_dict}"          -> "phase_dict"   (whole placeholder)
+            "{project.name}"        -> "project.name" (whole placeholder)
+            "prefix_{name}"         -> None (has literal text)
+            "{name}_suffix"         -> None (has literal text)
+            "{name!r}"              -> None (has conversion)
+            "{value:.2f}"           -> None (has format spec)
+
+        Args:
+            template (str): The template string to inspect.
+
+        Returns:
+            str or None: The field_name if the template is a pure
+                single placeholder, otherwise None.
+        """
+        formatter = string.Formatter()
+        parts = list(formatter.parse(template))
+        if len(parts) != 1:
+            return None
+        literal_text, field_name, format_spec, conversion = parts[0]
+        if literal_text or field_name is None or conversion or format_spec:
+            return None
+        return field_name
+
+    @classmethod
+    def _resolve_template(cls, template: str, context: dict):
+        """
+        Resolves a template string against context.
+
+        If the template is a pure single placeholder with no extra
+        literal text (e.g. "{phase_dict}"), the actual object is pulled
+        from context and returned AS-IS, preserving its original type
+        (dict, list, int, etc.) instead of stringifying it. This matters
+        for values like a whole dict/list meant to be used as-is
+        (e.g. label_columns: "{phase_dict}").
+
+        Otherwise, falls back to normal string formatting via
+        _safe_format, where placeholders with missing root keys are
+        left untouched.
+
+        Args:
+            template (str): The template string to resolve.
+            context (dict): Available substitution values.
+
+        Returns:
+            The resolved value: either the original object (whole
+            placeholder case) or a formatted string.
+        """
+        field_name = cls._whole_placeholder(template)
+        if field_name is not None:
+            root_key = field_name.split('.')[0].split('[')[0]
+            if root_key in context:
+                formatter = string.Formatter()
+                try:
+                    return formatter.get_field(field_name, [], context)[0]
+                except (AttributeError, KeyError, TypeError, IndexError):
+                    return template
+            return template
+        return cls._safe_format(template, context)
+
+    @staticmethod
     def _safe_format(template: str, context: dict) -> str:
         """
         Formats a template string using only the keys present in context.
@@ -387,7 +478,7 @@ class Config:
                     value = formatter.convert_field(value, conversion)
                     value = formatter.format_field(value, format_spec)
                     result.append(value)
-                except (AttributeError, KeyError, TypeError):
+                except (AttributeError, KeyError, TypeError, IndexError):
                     # Attribute access failed → leave the placeholder untouched
                     placeholder = '{' + field_name
                     if conversion:
@@ -401,29 +492,61 @@ class Config:
 
     def _flatten(self, prefix='') -> dict:
         """
-        Recursively flattens the Config object into a dict of dotted-key paths.
+        Recursively flattens the Config object into a dict of dotted-key
+        paths. Lists are walked too, using an "[index]" suffix on the key
+        (e.g., 'augmentation[3].metadata_keys').
 
         Args:
             prefix (str): The current key prefix for nested configs.
 
         Returns:
-            dict: A flat mapping of dotted paths to leaf values.
-                  e.g., {'project.name': 'Ahar', 'dataset.path.catalog': '...'}
+            dict: A flat mapping of dotted/indexed paths to leaf values.
+                  e.g., {'project.name': 'Ahar',
+                         'augmentation[3].metadata_keys': '{phase_dict_keys}'}
         """
         result = {}
         for attr, value in self.__dict__.items():
             if attr == 'entries':
                 continue
             key = attr if not prefix else f'{prefix}.{attr}'
-            if isinstance(value, Config):
-                result.update(value._flatten(prefix=key))
-            else:
-                result[key] = value
+            result.update(self._flatten_value(key, value))
         return result
+
+    @classmethod
+    def _flatten_value(cls, key, value) -> dict:
+        """
+        Helper for _flatten: flattens a single value which may be a
+        Config, a list (of anything, recursively), or a leaf value.
+        """
+        result = {}
+        if isinstance(value, Config):
+            result.update(value._flatten(prefix=key))
+        elif isinstance(value, (list, tuple)):
+            for i, item in enumerate(value):
+                result.update(cls._flatten_value(f'{key}[{i}]', item))
+        else:
+            result[key] = value
+        return result
+
+    @classmethod
+    def _resolve_part(cls, obj, part):
+        """
+        Resolves a single dotted-path component against obj, applying
+        any trailing list indices (e.g., 'augmentation[3]').
+        """
+        match = cls._PART_RE.match(part)
+        if not match:
+            raise ValueError(f"Invalid path component: {part!r}")
+        name, indices = match.group(1), match.group(2)
+        obj = getattr(obj, name)
+        for idx in re.findall(r'\[(\d+)\]', indices):
+            obj = obj[int(idx)]
+        return obj
 
     def _set_dotted(self, dotted_key: str, value):
         """
-        Sets a value on the config using a dotted path string.
+        Sets a value on the config using a dotted path string, which may
+        include list indices (e.g., 'augmentation[3].metadata_keys').
 
         Args:
             dotted_key (str): Dotted path to the target attribute.
@@ -432,12 +555,27 @@ class Config:
         parts = dotted_key.split('.')
         obj = self
         for part in parts[:-1]:
-            obj = getattr(obj, part)
-        setattr(obj, parts[-1], value)
+            obj = self._resolve_part(obj, part)
+
+        last = parts[-1]
+        match = self._PART_RE.match(last)
+        if not match:
+            raise ValueError(f"Invalid path component: {last!r}")
+        name, indices = match.group(1), match.group(2)
+        idx_list = re.findall(r'\[(\d+)\]', indices)
+
+        if not idx_list:
+            setattr(obj, name, value)
+        else:
+            target = getattr(obj, name)
+            for idx in idx_list[:-1]:
+                target = target[int(idx)]
+            target[int(idx_list[-1])] = value
 
     def _get_dotted(self, dotted_key: str):
         """
-        Retrieves a value from the config using a dotted path string.
+        Retrieves a value from the config using a dotted path string,
+        which may include list indices (e.g., 'augmentation[3].windowlen').
 
         Args:
             dotted_key (str): Dotted path to the target attribute.
@@ -447,12 +585,13 @@ class Config:
         """
         obj = self
         for part in dotted_key.split('.'):
-            obj = getattr(obj, part)
+            obj = self._resolve_part(obj, part)
         return obj
 
     def to_dict(self):
         """
         Recursively converts the Config object back into a dictionary.
+        Handles Config objects nested inside lists (and lists of lists).
 
         Returns:
             dict: A dictionary representation of the Config object.
@@ -461,13 +600,19 @@ class Config:
         for key, value in self.__dict__.items():
             if key == 'entries':
                 continue
-            if isinstance(value, Config):
-                value = value.to_dict()
-            elif isinstance(value, list):
-                value = [v.to_dict() if isinstance(v, Config) else v
-                         for v in value]
-            result[key] = value
+            result[key] = self._to_dict_value(value)
         return result
+
+    @classmethod
+    def _to_dict_value(cls, value):
+        if isinstance(value, Config):
+            return value.to_dict()
+        elif isinstance(value, list):
+            return [cls._to_dict_value(v) for v in value]
+        elif isinstance(value, tuple):
+            return tuple(cls._to_dict_value(v) for v in value)
+        else:
+            return value
 
     def to_yaml(self, **yaml_kwargs):
         """
@@ -480,12 +625,11 @@ class Config:
             str: A YAML-formatted string.
         """
         return yaml.dump(self.to_dict(), **yaml_kwargs)
-    
+
     def write(self, output, format='YAML'):
-        if format=='YAML':
+        if format == 'YAML':
             with open(output, 'w') as file:
                 self.to_yaml(stream=file, default_flow_style=False, indent=4)
-
 
     def __str__(self):
         """
