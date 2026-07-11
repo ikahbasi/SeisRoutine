@@ -498,12 +498,30 @@ class StreamCache:
             return obs.Stream()
         return target_stream
 
-    def get_by_pick(self, pick):
+    def get_by_pick(self, pick, after=0):
         """Convenience wrapper that extracts time and station from a Pick."""
-        return self.get(
+        st = self.get(
             time=pick.time,
             station_code=pick.waveform_id.station_code
         )
+
+        t = pick.time
+        t_after = t+after
+        if t.julday != (t_after).julday:
+            pattern = self.pattern_path.format(
+                time=t_after,
+                **self.pattern_vars
+            )
+            pattern_path = f"{self.root}/{pattern}"
+            st.extend(
+                self._read_safely(pattern_path)
+            )
+            st.merge(-1)
+            st.detrend("constant")
+            if self.merge_method:
+                st.merge(method=self.merge_method)
+
+        return st
     
     def check_sps(self, sps=100):
         wrong = {
