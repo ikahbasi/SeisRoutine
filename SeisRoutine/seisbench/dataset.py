@@ -2,8 +2,33 @@ from math import sqrt
 import numpy as np
 import pandas as pd
 from seisbench.util import stream_to_array
+import seisbench.generate as sbg
 import SeisRoutine.catalog as src
 import re
+import SeisRoutine.config as srconf
+import logging
+
+def make_generator(dataset, augmentations):
+    gen = sbg.GenericGenerator(dataset)
+    gen.add_augmentations(augmentations)
+    return gen
+
+
+def build_augmentations(config, key='cls'):
+    augmentations = []
+    for aug in config:
+        logging.info(aug)
+        aug_params = aug.to_dict()
+        aug_name = aug_params.pop(key, None)
+        
+        augmentations.append(
+            srconf.ObjectFactory.create(
+                obj_str=aug_name,
+                **aug_params,
+            )
+        )
+
+    return augmentations
 
 
 def build_phase_mapper(

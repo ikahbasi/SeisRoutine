@@ -15,6 +15,55 @@ from functools import wraps
 import string
 import psutil
 import re
+from functools import lru_cache
+from importlib import import_module
+
+
+class ObjectFactory:
+    """Create objects from fully qualified class/function names."""
+
+    @staticmethod
+    @lru_cache(maxsize=None)
+    def resolve(obj_str: str):
+        """
+        Resolve a fully qualified class or callable name.
+
+        Example:
+            torch.optim.Adam
+            torch.nn.ReLU
+            my_package.models.PhaseNet
+        """
+        parts = obj_str.split(".")
+
+        for i in range(len(parts), 0, -1):
+            module_name = ".".join(parts[:i])
+
+            try:
+                obj = import_module(module_name)
+            except ModuleNotFoundError:
+                continue
+
+            try:
+                for name in parts[i:]:
+                    obj = getattr(obj, name)
+            except AttributeError as e:
+                raise ImportError(
+                    f"Cannot resolve '{obj_str}'."
+                ) from e
+
+            return obj
+
+        raise ImportError(
+            f"Cannot import module from '{obj_str}'."
+        )
+
+    @staticmethod
+    def create(obj_str: str, *args, **kwargs):
+        """
+        Instantiate the resolved class or call the resolved callable.
+        """
+        callable_obj = ObjectFactory.resolve(obj_str)
+        return callable_obj(*args, **kwargs)
 
 
 def dict_to_object(data_dict):
