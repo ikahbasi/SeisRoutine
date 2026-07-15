@@ -1115,7 +1115,20 @@ class EnvironmentInfo:
                         f"GPU({num}) Load": f"{gpu.load * 100} %",
                     })
         except ImportError:
-            print("\nGPUtil not installed. GPU info not available.")
+            logging.warning("\nGPUtil not installed. GPU info not available.")
+
+        # Optional: nvidia-smi output
+        try:
+            nvidia_smi_msg = subprocess.check_output(
+                ["nvidia-smi"],
+                encoding="utf-8",
+            )
+            info.update({
+                "nvidia-smi": nvidia_smi_msg,
+            })
+        except Exception as e:
+            logging.warning("nvidia-smi not available: %s", e)
+
         return info
 
     @staticmethod
