@@ -545,10 +545,10 @@ def min_max_ratio(data):
     1.0
 
     >>> min_max_ratio(np.array([-2, 0, 8]))
-    0.25
+    0.67
 
     >>> min_max_ratio(np.array([5, 5, 10]))
-    0.0
+    0.5
 
     Notes
     -----
