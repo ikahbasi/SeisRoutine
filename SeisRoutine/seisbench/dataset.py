@@ -1,5 +1,6 @@
 from math import sqrt
 import numpy as np
+from scipy import signal
 import pandas as pd
 from seisbench.util import stream_to_array
 import seisbench.generate as sbg
@@ -698,3 +699,17 @@ def build_split_column(
     split.loc[selected_idx[n_train + n_dev:]] = "test"
 
     return split
+
+class Tapering:
+    def __init__(self, alpha=0.3, key='X'):
+        self.alpha = alpha  # ضریب تیپرینگ
+        if isinstance(key, str):
+            self.key = (key, key)
+        else:
+            self.key = key
+
+    def __call__(self, state_dict):
+        x, metadata = state_dict[self.key[0]]
+        taper = signal.windows.tukey(x.shape[-1], self.alpha)
+        x = x * taper
+        state_dict[self.key[1]] = (x, metadata)
