@@ -1,4 +1,4 @@
-SeisRoutine/__pycache__/
+__pycache__/
 Fig
 Catalog-example_LocalData.ipynb
-*.pyc
+*.py[cod]
