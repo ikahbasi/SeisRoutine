@@ -186,16 +186,17 @@ class BadChannelReplacer:
     Replace bad channels with a copy of a selected good channel.
     Number of channels remains constant (3 components stay 3 components).
     """
-    def __init__(self, alpha=0.3, key='X'):
-        self.alpha = alpha  # Tapering Coefficient
+    def __init__(self, column='channel_status', key='X'):
+        self.column = column
         if isinstance(key, str):
             self.key = (key, key)
         else:
             self.key = key
 
-    def __call__(self, state_dict, column='channel_status'):
+    def __call__(self, state_dict):
         x, metadata = state_dict[self.key[0]]
-        channel_status = metadata[column]
+        state_dict[f"{self.key[1]}_io_BadChannelReplacer"] = (x, metadata)
+        channel_status = metadata[self.column]
         x = x[channel_status]
         state_dict[self.key[1]] = (x, metadata)
 
