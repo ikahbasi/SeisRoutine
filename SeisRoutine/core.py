@@ -226,7 +226,7 @@ def sinc_wave(times, shift, frequency):
     return np.sinc(t)
 
 
-def reconstrucion(times, amplitudes, target_sps):
+def reconstruction(times, amplitudes, target_sps):
     """
     Reconstruct a signal using sinc interpolation.
 

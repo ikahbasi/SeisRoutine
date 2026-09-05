@@ -739,8 +739,8 @@ class reconstruction:
                 frequency=nyquest_frequency,
                 duration=duration,
                 sampling_rate=target_sps,
-                shift=(duration/2)-shift
-                )
+                shift=(duration/2)-shift,
+            )
             a_reconstructed += a_sinc * scale
         return t_reconstructed, a_reconstructed
     
@@ -754,7 +754,10 @@ class reconstruction:
             stats_reconstructed = tr.stats.copy()
             stats_reconstructed.npts = a_reconstructed.size
             stats_reconstructed.delta = t_reconstructed[1] - t_reconstructed[0]
-            tr_reconstructed = Trace(data=a_reconstructed, header=stats_reconstructed)
+            tr_reconstructed = Trace(
+                data=a_reconstructed,
+                header=stats_reconstructed,
+            )
             self.st_reconstructed += tr_reconstructed
 
 
@@ -797,7 +800,7 @@ def preprocessing(st):
     st.merge(fill_value=0)
 
 
-def reconstrucion(stream, target_sps, change_name=True):
+def reconstruction(stream, target_sps, change_name=True):
     """
     Reconstruct an ObsPy Stream using sinc interpolation.
 
@@ -815,9 +818,11 @@ def reconstrucion(stream, target_sps, change_name=True):
     """
     lst_trace = []
     for trace in stream:
-        times, data = src.reconstrucion(times=trace.times(),
-                                        amplitudes=trace.data,
-                                        target_sps=target_sps)
+        times, data = src.reconstruction(
+            times=trace.times(),
+            amplitudes=trace.data,
+            target_sps=target_sps,
+        )
         # Copy the stats from the original Trace and update the stats
         # with the new number of points and sampling rate.
         stats = trace.stats.copy()
@@ -826,7 +831,10 @@ def reconstrucion(stream, target_sps, change_name=True):
         if change_name:
             stats.station += '_reconst'
         # Create a new Trace object with the reconstructed data and updated stats.
-        trace_reconst = Trace(data=data, header=stats)
+        trace_reconst = Trace(
+            data=data,
+            header=stats,
+        )
         lst_trace.append(trace_reconst)
     # Create a new Stream object from the list of reconstructed Traces.
     stream_reconst = Stream(lst_trace)
