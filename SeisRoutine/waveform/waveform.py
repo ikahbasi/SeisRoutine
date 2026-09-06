@@ -1,8 +1,9 @@
 import numpy as np
 import scipy
+import scipy.signal
+import scipy.stats
 from obspy import Stream, Trace
 from obspy import read
-from scipy import signal
 import matplotlib.pyplot as plt
 import SeisRoutine.plot as seisplot
 import SeisRoutine.core as src
@@ -11,10 +12,9 @@ import re
 import os
 import glob
 import obspy as obs
-from scipy import stats
 import pywt
-from scipy.signal import find_peaks
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass
@@ -52,7 +52,7 @@ class SpikeDetector:
             self,
             threshold=10
         ):
-        z_score = stats.zscore(self.data)
+        z_score = scipy.stats.zscore(self.data)
         spikes = np.where(z_score > threshold)[0]
         result = self._build_result(
             spikes,
@@ -102,7 +102,7 @@ class SpikeDetector:
             self,
             prominence=5
         ):
-        peaks, properties = find_peaks(
+        peaks, properties = scipy.signal.find_peaks(
             np.abs(self.data),
             prominence=prominence,
         )
@@ -196,7 +196,7 @@ class SpikeDetector:
         if preprocessing:
             data -= data.mean()
             data[~np.isfinite(data)] = 0
-        s = stats.skew(data, bias=False)
+        s = scipy.stats.skew(data, bias=False)
         spikes = (
             np.array([np.argmax(np.abs(data))])
             if abs(s) > threshold
@@ -219,7 +219,7 @@ class SpikeDetector:
         if preprocessing:
             data -= data.mean()
             data[~np.isfinite(data)] = 0
-        k = stats.kurtosis(data, fisher=fisher, bias=False)
+        k = scipy.stats.kurtosis(data, fisher=fisher, bias=False)
         spikes = (
             np.array([np.argmax(np.abs(data))])
             if k > threshold
@@ -282,7 +282,6 @@ class SNR:
         if self.data.ndim == 1:
             self.data = self.data[np.newaxis, :]
 
-        self.data = self.data - self.data.mean(axis=1, keepdims=True)
 
         self._extract_windows(
             noise_window,
@@ -313,9 +312,27 @@ class SNR:
             raise ValueError("Invalid noise_window.")
         if ss >= es:
             raise ValueError("Invalid signal_window.")
-
         self.noise = self.data[:, sn:en]
         self.signal = self.data[:, ss:es]
+        
+        self.noise = self.noise - self.noise.mean(axis=1, keepdims=True)
+        self.signal = self.signal - self.signal.mean(axis=1, keepdims=True)
+        
+        # self.noise = self.noise.astype(np.float64)
+        # self.signal = self.signal.astype(np.float64)
+        # fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(10, 5))
+        # ax1.plot(self.noise.T+[1, 0, -1]); ax1.set_title("Noise")
+        # ax2.plot( self.signal.T+[1, 0, -1]); ax2.set_title("Signal")
+        # plt.show()
+        
+    def peak_to_peak(
+            self,
+        ):
+        max_noise = np.abs(self.noise).max()
+        max_signal = np.abs(self.signal).max()
+        
+        return max_signal / max_noise
+    
 
     @staticmethod
     def _compute_power(
@@ -327,7 +344,8 @@ class SNR:
         n = data.shape[axis]
 
         if domain == 'time':
-            power = 1 / n * np.sum(np.abs(data) ** 2, axis=axis)
+            # power = 1 / n * np.sum(np.abs(data) ** 2, axis=axis)
+            power = np.mean(np.abs(data) ** 2, axis=axis)
 
         elif domain == 'frequency':
             power = 1 / (n ** 2) * np.sum(np.abs(data) ** 2, axis=axis)
@@ -339,7 +357,7 @@ class SNR:
 
     def power_in_time(
             self,
-            epsilon=1e-8,
+            epsilon=1e-12,
             axis_power=1,
         ):
 
@@ -352,13 +370,21 @@ class SNR:
             data=self.noise,
             domain='time',
             axis=axis_power
-        ) + epsilon
+        )
+        p_noise = np.maximum(p_noise, epsilon)
+        
+        print(
+            f"noise: min: {self.noise.min()} max: {self.noise.max()}", self.noise.dtype, p_noise,
+            f"signal: min: {self.signal.min()} max: {self.signal.max()}", self.signal.dtype, p_signal,
+            "SNR", p_signal / p_noise
+        )
+
 
         return p_signal / p_noise
 
     def power_in_freq(
             self,
-            epsilon=1e-8,
+            epsilon=1e-12,
             axis_power=1,
         ):
 
@@ -374,7 +400,8 @@ class SNR:
             data=noise_fft,
             domain='frequency',
             axis=axis_power
-        ) + epsilon
+        )
+        p_noise = np.maximum(p_noise, epsilon)
 
         return p_signal / p_noise
 
@@ -382,8 +409,8 @@ class SNR:
             self,
         ):
 
-        noise_mad = stats.median_abs_deviation(self.noise, axis=1)
-        signal_mad = stats.median_abs_deviation(self.signal, axis=1)
+        noise_mad = scipy.stats.median_abs_deviation(self.noise, axis=1)
+        signal_mad = scipy.stats.median_abs_deviation(self.signal, axis=1)
 
         return signal_mad / noise_mad
 
@@ -403,7 +430,7 @@ class SNR:
             if method ==  1:
 
                 signal_p = np.percentile(signal, hbp)
-                noise_p = 1.4826 * stats.median_abs_deviation(noise)
+                noise_p = 1.4826 * scipy.stats.median_abs_deviation(noise)
 
             elif method == 2:
 
@@ -411,13 +438,13 @@ class SNR:
                     (signal >= np.percentile(signal, lbp)) &
                     (signal <= np.percentile(signal, hbp))
                 ]
-                signal_p = stats.median_abs_deviation(signal)
+                signal_p = scipy.stats.median_abs_deviation(signal)
 
                 noise = noise[
                     (noise >= np.percentile(noise, lbp)) &
                     (noise <= np.percentile(noise, hbp))
                 ]
-                noise_p = stats.median_abs_deviation(noise)
+                noise_p = scipy.stats.median_abs_deviation(noise)
 
             snr.append(
                 signal_p / noise_p
@@ -459,13 +486,19 @@ class SNR:
 class StreamCache:
     def __init__(
             self,
-            root: str,
-            pattern_path: str,
+            root: str=None,
+            pattern_path: str=None,
+            client_tsindex=None,
+            client_sds=None,
+            client_fdsn=None,
             merge_method=None,
             **pattern_vars
         ):
         self.root = root
         self.pattern_path = pattern_path
+        self.client_tsindex = client_tsindex
+        self.client_sds = client_sds
+        self.client_fdsn = client_fdsn
         self.merge_method = merge_method
         self.pattern_vars = pattern_vars
         self.stream = None
@@ -547,11 +580,60 @@ class StreamCache:
         return False
 
     def _read(self, time):
-        pattern = self.pattern_path.format(time=time, **self.pattern_vars)
-        pattern_path = f"{self.root}/{pattern}"
-        logging.info(f"Reading waveform data: {pattern_path}")
+        if self.root and self.pattern:
+            pattern = self.pattern_path.format(
+                time=time,
+                **self.pattern_vars,
+            )
+            pattern_path = Path(self.root) / pattern
+            logging.info(f"Reading waveform data: {pattern_path}")
 
-        self.stream = self._read_safely(pattern_path)
+            self.stream = self._read_safely(pattern_path)
+
+        elif self.client_fdsn:
+            stime = obs.UTCDateTime(time)
+            etime = stime + (24*60*60)
+            msg = (
+                "Loading data from FDSN client"
+                f"Start Time: {stime}"
+                f"End Time: {etime}"
+            )
+            logging.info(msg)
+            self.stream = self.client_fdsn.get_waveforms(
+                network="*",
+                station="*",
+                location="*",
+                channel="*",
+                starttime=stime,
+                endtime=etime,
+                merge=-1,
+            )
+
+        elif self.client_tsindex:
+            stime = obs.UTCDateTime(time)
+            etime = stime + (24*60*60)
+            msg = (
+                "Loading data from TSINDEX client"
+                f"Start Time: {stime}"
+                f"End Time: {etime}"
+            )
+            logging.info(msg)
+            self.stream = self.client_tsindex.get_waveforms(
+                network="*",
+                station="*",
+                location="*",
+                channel="*",
+                starttime=stime,
+                endtime=etime,
+                merge=-1,
+            )
+
+        elif self.client_sds:
+            pass
+
+        else:
+            msg = "There isn't any"
+            print(msg)
         self._preprocess()
         self._loaded_julday = self.stream[0].stats.starttime.julday
         self.stations = list({tr.stats.station for tr in self.stream})
@@ -676,7 +758,12 @@ def Coherence(stream, ref_station_id, plot=False, **kwargs):
     sps = tr_ref.stats.sampling_rate
     #
     for tr in stream:
-        f, Cxy = signal.coherence(x=tr_ref.data, y=tr.data, fs=sps, nperseg=1024)
+        f, Cxy = scipy.signal.coherence(
+            x=tr_ref.data,
+            y=tr.data,
+            fs=sps,
+            nperseg=1024,
+        )
         label = f'{tr.stats.station}.{tr.stats.channel}'
         if tr.id == ref_station_id:
             label = f'{label} (ref)'
