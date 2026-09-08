@@ -331,7 +331,7 @@ class SNR:
         max_noise = np.abs(self.noise).max()
         max_signal = np.abs(self.signal).max()
         
-        return max_signal / max_noise
+        return np.array([max_signal / max_noise])
     
 
     @staticmethod
@@ -373,11 +373,11 @@ class SNR:
         )
         p_noise = np.maximum(p_noise, epsilon)
         
-        print(
-            f"noise: min: {self.noise.min()} max: {self.noise.max()}", self.noise.dtype, p_noise,
-            f"signal: min: {self.signal.min()} max: {self.signal.max()}", self.signal.dtype, p_signal,
-            "SNR", p_signal / p_noise
-        )
+        # print(
+        #     f"noise: min: {self.noise.min()} max: {self.noise.max()}", self.noise.dtype, p_noise,
+        #     f"signal: min: {self.signal.min()} max: {self.signal.max()}", self.signal.dtype, p_signal,
+        #     "SNR", p_signal / p_noise
+        # )
 
 
         return p_signal / p_noise
