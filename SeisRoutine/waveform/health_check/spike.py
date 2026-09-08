@@ -509,7 +509,10 @@ def spike_by_kurtosis(data, threshold=10, fisher=False,
     return spike, k
 
 
-def min_max_ratio(data):
+def min_max_ratio(
+        data,
+        epsilon=1e-12,
+    ):
     """
     Measure amplitude symmetry around the signal mean.
 
@@ -560,4 +563,5 @@ def min_max_ratio(data):
     mean = data.mean()
     min_ = abs(data.min()-mean)
     max_ = abs(data.max()-mean)
-    return min(min_, max_) / max(min_, max_)
+    
+    return min(min_, max_) / max(min_, max_, epsilon)
