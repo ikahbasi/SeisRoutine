@@ -798,54 +798,297 @@ def fft(array, delta, segment=None):
     return freq, ampl
 
 
-class reconstruction:
-    def __init__(self, st):
-        self.st = st
-        self.st_reconstructed = Stream()
+class SincReconstructor:
+    """
+    Reconstruct signals using sinc interpolation.
 
-    def _sinc_wave(self, frequency, duration, sampling_rate, shift):
-        stime = -duration / 2
-        etime =  duration / 2
-        delta = 1 / sampling_rate
-        times = np.arange(stime, etime, delta)
-        times_shifted = times + shift
-        x = 2 * np.pi * frequency * times_shifted
-        ampls = np.sin(x) / (x)
-        return times, ampls
+    This class supports reconstruction of both NumPy arrays and ObsPy
+    Stream objects. The original signal is assumed to be uniformly sampled.
 
-    def _reconstruction(self, times, data, target_sps):
-        delta = times[1] - times[0]
-        sampling_rate = 1 / delta
-        nyquest_frequency = sampling_rate / 2
-        duration = times[-1] - times[0] + delta
-        #
-        t_reconstructed = np.arange(0, duration, 1/target_sps)
-        a_reconstructed = np.zeros_like(t_reconstructed)
-        for shift, scale in zip(times, data):
-            t_sinc, a_sinc = self._sinc_wave(
-                frequency=nyquest_frequency,
-                duration=duration,
-                sampling_rate=target_sps,
-                shift=(duration/2)-shift,
-            )
-            a_reconstructed += a_sinc * scale
-        return t_reconstructed, a_reconstructed
+    Parameters
+    ----------
+    target_sampling_rate : float
+        Sampling rate of the reconstructed signal in Hz.
+
     
-    def apply(self, target_sps):
-        self.st_reconstructed = Stream()
-        for tr in self.st:
-            times = tr.times()
-            data = tr.data
-            ###
-            t_reconstructed, a_reconstructed = self._reconstruction(times, data, target_sps)
-            stats_reconstructed = tr.stats.copy()
-            stats_reconstructed.npts = a_reconstructed.size
-            stats_reconstructed.delta = t_reconstructed[1] - t_reconstructed[0]
-            tr_reconstructed = Trace(
-                data=a_reconstructed,
-                header=stats_reconstructed,
+    Examples
+    --------
+        # Import required libraries
+        import numpy as np
+        import matplotlib.pyplot as plt
+        from obspy import (
+            Stream,
+            Trace,
+        )
+        from SeisRoutine.waveform.waveform import (
+            SineWaveSignal,
+            SincReconstructor,
+        )
+        
+        sampling_rate = 5
+        sine_signals = SineWaveSignal(
+            duration=10,
+            sampling_rate=sampling_rate,
+        )
+        sine_signals.add_sine_wave(frequency=10, amplitude=1)
+        sine_signals.add_sine_wave(frequency=20, amplitude=1)
+        sine_signals.add_sine_wave(frequency=50, amplitude=1)
+        time, resultant_signal = sine_signals.resultant()
+        ######################################################################
+        reconstructor = SincReconstructor(
+            target_sampling_rate=200
+        )
+        ######################################################################
+        reconstructed_times, reconstructed_data = (
+            reconstructor.reconstruct(
+                times=time,
+                data=resultant_signal
             )
-            self.st_reconstructed += tr_reconstructed
+        )
+        plt.subplots(figsize=(10, 4))
+        plt.plot(time, resultant_signal, 'b', label='Original')
+        plt.plot(
+            reconstructed_times, reconstructed_data, 'r', label='reconstructed'
+        )
+        plt.legend()
+        plt.show()
+        ######################################################################
+        trace = Trace(
+            data=resultant_signal,
+            header={
+                "sampling_rate": 20,
+                "station": "001",
+                "network": "IR",
+                "channel": "HHZ"
+            }
+        )
+        stream = Stream(traces=[trace])
+        
+        reconstructed_stream = reconstructor.reconstruct(
+            stream=stream
+        )
+        ## or
+        # reconstructed_stream = reconstructor.reconstruct_stream(
+        #     stream=stream
+        # )
+        
+        reconstructed_stream.plot()
+    """
+
+    def __init__(self, target_sampling_rate):
+        self.target_sampling_rate = target_sampling_rate
+
+    @staticmethod
+    def _sinc_wave(times, shift, nyquist_frequency):
+        """
+        Calculate a sinc interpolation function.
+
+        Parameters
+        ----------
+        times : numpy.ndarray
+            Time points where the sinc function is evaluated.
+        shift : float
+            Center time of the sinc function.
+        nyquist_frequency : float
+            Nyquist frequency of the original signal.
+
+        Returns
+        -------
+        numpy.ndarray
+            Sinc function values.
+        """
+
+        argument = 2 * nyquist_frequency * (times - shift)
+
+        return np.sinc(argument)
+
+    def reconstruct_array(self, times, data):
+        """
+        Reconstruct a signal represented by NumPy arrays.
+
+        Parameters
+        ----------
+        times : numpy.ndarray
+            Time points of the original signal.
+        data : numpy.ndarray
+            Amplitudes of the original signal.
+
+        Returns
+        -------
+        reconstructed_times : numpy.ndarray
+            Time points of the reconstructed signal.
+        reconstructed_data : numpy.ndarray
+            Amplitudes of the reconstructed signal.
+
+        Raises
+        ------
+        ValueError
+            If the input arrays have different lengths, contain fewer than
+            two samples, or have a non-uniform sampling interval.
+
+        Examples
+        --------
+            See the class docstring for a detailed description and usage
+            examples.
+        """
+
+        times = np.asarray(times)
+        data = np.asarray(data)
+
+        if times.ndim != 1 or data.ndim != 1:
+            raise ValueError("Times and data must be one-dimensional arrays.")
+
+        if times.size != data.size:
+            raise ValueError(
+                "Times and data must have the same number of samples."
+            )
+
+        if times.size < 2:
+            raise ValueError(
+                "At least two samples are required for reconstruction."
+            )
+
+        time_intervals = np.diff(times)
+
+        if not np.allclose(time_intervals, time_intervals[0]):
+            raise ValueError(
+                "The input signal must have a uniform sampling interval."
+            )
+
+        if self.target_sampling_rate <= 0:
+            raise ValueError(
+                "Target sampling rate must be greater than zero."
+            )
+
+        original_sampling_rate = 1 / time_intervals[0]
+        nyquist_frequency = original_sampling_rate / 2
+
+        reconstructed_times = np.arange(
+            times[0],
+            times[-1],
+            1 / self.target_sampling_rate
+        )
+
+        reconstructed_data = np.zeros(
+            reconstructed_times.shape,
+            dtype=np.result_type(data, float)
+        )
+
+        for shift, amplitude in zip(times, data):
+            sinc_values = self._sinc_wave(
+                times=reconstructed_times,
+                shift=shift,
+                nyquist_frequency=nyquist_frequency
+            )
+
+            reconstructed_data += amplitude * sinc_values
+
+        return reconstructed_times, reconstructed_data
+
+    def reconstruct_stream(self, stream, change_station_name=True):
+        """
+        Reconstruct all traces in an ObsPy Stream.
+
+        Parameters
+        ----------
+        stream : obspy.Stream
+            Input ObsPy Stream.
+        change_station_name : bool, optional
+            If True, append ``"_reconst"`` to the station name.
+            Defaults to True.
+
+        Returns
+        -------
+        obspy.Stream
+            Reconstructed ObsPy Stream.
+
+        Examples
+        --------
+            See the class docstring for a detailed description and usage
+            examples.
+        """
+
+        if not isinstance(stream, Stream):
+            raise TypeError("Input must be an ObsPy Stream.")
+
+        reconstructed_traces = []
+
+        for trace in stream:
+            times = trace.times()
+            data = trace.data
+
+            reconstructed_times, reconstructed_data = (
+                self.reconstruct_array(
+                    times=times,
+                    data=data
+                )
+            )
+
+            stats = trace.stats.copy()
+
+            stats.npts = reconstructed_data.size
+            stats.sampling_rate = self.target_sampling_rate
+            stats.delta = 1 / self.target_sampling_rate
+
+            if change_station_name and hasattr(stats, "station"):
+                stats.station = f"{stats.station}_reconst"
+
+            reconstructed_trace = Trace(
+                data=reconstructed_data,
+                header=stats
+            )
+
+            reconstructed_traces.append(reconstructed_trace)
+
+        return Stream(reconstructed_traces)
+
+    def reconstruct(self, data=None, times=None, stream=None):
+        """
+        Reconstruct either NumPy arrays or an ObsPy Stream.
+
+        Parameters
+        ----------
+        data : numpy.ndarray, optional
+            Amplitudes of the original signal.
+        times : numpy.ndarray, optional
+            Time points of the original signal.
+        stream : obspy.Stream, optional
+            Input ObsPy Stream.
+
+        Returns
+        -------
+        tuple or obspy.Stream
+            For array input, returns reconstructed times and data.
+            For Stream input, returns a reconstructed Stream.
+
+        Raises
+        ------
+        ValueError
+            If the input arguments are invalid.
+
+        Examples
+        --------
+            See the class docstring for a detailed description and usage
+            examples.
+        """
+
+        if stream is not None:
+            if data is not None or times is not None:
+                raise ValueError(
+                    "Use either stream or times/data, not both."
+                )
+
+            return self.reconstruct_stream(stream)
+
+        if data is None or times is None:
+            raise ValueError(
+                "For array input, both times and data are required."
+            )
+
+        return self.reconstruct_array(
+            times=times,
+            data=data
+        )
 
 
 def transform_stream_metadata(
@@ -887,45 +1130,121 @@ def preprocessing(st):
     st.merge(fill_value=0)
 
 
-def reconstruction(stream, target_sps, change_name=True):
+class SineWaveSignal:
     """
-    Reconstruct an ObsPy Stream using sinc interpolation.
+    Generate and manage sinusoidal signals and calculate their resultant.
 
-    This function reconstructs each Trace within an ObsPy Stream to a new sampling rate
-    using sinc interpolation.
+    Parameters
+    ----------
+    duration : float
+        Duration of the signals in seconds.
+    sampling_rate : float
+        Sampling rate in samples per second (Hz).
 
-    Parameters:
-        stream (obspy.core.stream.Stream): The input ObsPy Stream object.
-        target_sps (int): The target sampling rate for the reconstructed Traces.
-        change_name (bool, optional): If True, appends '_reconst' to the station name of
-            each Trace. Defaults to True.
+    Attributes
+    ----------
+    time : numpy.ndarray
+        Time vector shared by all generated signals.
+    signals : list of numpy.ndarray
+        List containing the generated sinusoidal signals.
+    frequencies : list of float
+        Frequencies of the generated signals in Hz.
+    amplitudes : list of float
+        Amplitudes of the generated signals.
+    phases : list of float
+        Phases of the generated signals in radians.
 
-    Returns:
-        obspy.core.stream.Stream: The reconstructed ObsPy Stream object.
+    Examples
+    --------
+        sine_signals = SineWaveSignal(duration=10, sampling_rate=5)
+        sine_signals.add_sine_wave(frequency=10, amplitude=1)
+        sine_signals.add_sine_wave(frequency=20, amplitude=1)
+        sine_signals.add_sine_wave(frequency=50, amplitude=1)
+        time, resultant_signal = sine_signals.resultant()
     """
-    lst_trace = []
-    for trace in stream:
-        times, data = src.reconstruction(
-            times=trace.times(),
-            amplitudes=trace.data,
-            target_sps=target_sps,
+
+    def __init__(self, duration, sampling_rate):
+        self.duration = duration
+        self.sampling_rate = sampling_rate
+
+        self.time = np.arange(
+            0,
+            duration,
+            1 / sampling_rate
         )
-        # Copy the stats from the original Trace and update the stats
-        # with the new number of points and sampling rate.
-        stats = trace.stats.copy()
-        stats.npts = data.size
-        stats.sampling_rate = target_sps
-        if change_name:
-            stats.station += '_reconst'
-        # Create a new Trace object with the reconstructed data and updated stats.
-        trace_reconst = Trace(
-            data=data,
-            header=stats,
+
+        self.signals = []
+        self.frequencies = []
+        self.amplitudes = []
+        self.phases = []
+
+    def add_sine_wave(self, frequency, amplitude, phase=0):
+        """
+        Generate and store a sinusoidal signal.
+
+        Parameters
+        ----------
+        frequency : float
+            Frequency of the sinusoidal signal in Hz.
+        amplitude : float
+            Amplitude of the sinusoidal signal.
+        phase : float, optional
+            Initial phase of the sinusoidal signal in radians.
+            Default is 0.
+
+        Returns
+        -------
+        numpy.ndarray
+            The generated sinusoidal signal.
+
+        Examples
+        --------
+        >>> signal = SineWaveSignal(
+        ...     duration=10,
+        ...     sampling_rate=200
+        ... )
+
+        >>> wave = signal.add_sine_wave(
+        ...     frequency=10,
+        ...     amplitude=1,
+        ...     phase=np.pi / 4
+        ... )
+        """
+
+        signal = amplitude * np.sin(
+            2 * np.pi * frequency * self.time + phase
         )
-        lst_trace.append(trace_reconst)
-    # Create a new Stream object from the list of reconstructed Traces.
-    stream_reconst = Stream(lst_trace)
-    return stream_reconst
+
+        self.signals.append(signal)
+        self.frequencies.append(frequency)
+        self.amplitudes.append(amplitude)
+        self.phases.append(phase)
+
+        return signal
+
+    def resultant(self):
+        """
+        Calculate the resultant of all stored sinusoidal signals.
+
+        Returns
+        -------
+        time : numpy.ndarray
+            Time vector.
+        resultant_signal : numpy.ndarray
+            Sum of all stored sinusoidal signals.
+
+        Raises
+        ------
+        ValueError
+            If no sinusoidal signal has been generated yet.
+        """
+
+        if not self.signals:
+            raise ValueError("No sinusoidal signals have been generated.")
+
+        resultant_signal = np.sum(self.signals, axis=0)
+
+        return self.time, resultant_signal
 
 
 class NoiseGenerator:
