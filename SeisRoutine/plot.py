@@ -11,6 +11,49 @@ import seaborn as sns
 import logging
 
 
+def plot_noise_models(
+        fig,
+        ax,
+        noise_model_filepath,
+        x_axes='period',
+    ):
+
+    noise_model = np.load(noise_model_filepath)
+    periods=noise_model['model_periods']
+    nlnm=noise_model['low_noise']
+    nhnm=noise_model['high_noise']
+
+    if x_axes=='period':
+        x = periods
+        x_txt = 0.06
+        r_txt = -10
+    elif x_axes=='frequency':
+        x = 1 / periods
+        x_txt = 1 / 0.06
+        r_txt = +10
+    kwargs = {
+        'fontsize': 9,
+        'color': "k",
+        'fontfamily': "serif",
+        'ha': "center",
+        'va': "center",
+    }
+
+    ax.plot(x, nlnm, '0.4', linewidth=2, zorder=10)
+    ax.plot(x, nhnm, '0.4', linewidth=2, zorder=10)
+
+    plt.text(
+        x=x_txt, y=-90, s="HNM",
+        rotation=r_txt,
+        **kwargs
+    )
+    plt.text(
+        x=x_txt, y=-168, s="LNM",              
+        rotation=0,
+        **kwargs
+    )
+
+
 def _get_proper_kwargs(func, kwargs):
     """
     Filters kwargs to only include those that are valid parameters for func.
