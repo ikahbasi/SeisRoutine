@@ -6,7 +6,6 @@ from obspy import Stream, Trace
 from obspy import read
 import matplotlib.pyplot as plt
 import SeisRoutine.plot as seisplot
-import SeisRoutine.core as src
 import logging
 import re
 import os
@@ -15,6 +14,74 @@ import obspy as obs
 import pywt
 from dataclasses import dataclass
 from pathlib import Path
+from numpy.lib.stride_tricks import sliding_window_view
+
+
+class SlidingWindowProcessor:
+    """A utility class to segment 1D arrays into sliding windows
+
+    using static methods without needing class instantiation.
+    """
+
+    @staticmethod
+    def _validate_inputs(data, window: int, step: int) -> np.ndarray:
+        if window <= 0:
+            raise ValueError("window must be a positive integer.")
+        if step <= 0:
+            raise ValueError("step must be a positive integer.")
+
+        arr = np.asarray(data)
+        if arr.ndim != 1:
+            raise ValueError("Input data must be a 1D array.")
+        if len(arr) < window:
+            raise ValueError(
+                f"Data length ({len(arr)}) cannot be smaller than window ({window})."
+            )
+
+        return arr
+
+    @staticmethod
+    def transform_iterative(data, window: int, step: int = 1):
+        """Extract windows using standard iteration (list of arrays)."""
+        arr = SlidingWindowProcessor._validate_inputs(data, window, step)
+
+        windows = []
+        start_indices = []
+
+        for start in range(0, arr.size - window + 1, step):
+            windows.append(arr[start : start + window])
+            start_indices.append(start)
+
+        return windows, start_indices
+
+    @staticmethod
+    def transform_vectorized(data, window: int, step: int = 1):
+        """Extract windows using numpy.lib.stride_tricks.sliding_window_view."""
+        arr = SlidingWindowProcessor._validate_inputs(data, window, step)
+
+        all_windows = sliding_window_view(arr, window_shape=window)
+        windows = all_windows[::step]
+
+        num_windows = len(windows)
+        start_indices = np.arange(0, num_windows * step, step)
+
+        return windows, start_indices
+
+    @staticmethod
+    def transform(data, window: int, step: int = 1, method: str = "vectorized"):
+        """Unified interface to extract windows using the chosen method."""
+        if method == "vectorized":
+            return SlidingWindowProcessor.transform_vectorized(
+                data, window, step
+            )
+        elif method == "iterative":
+            return SlidingWindowProcessor.transform_iterative(
+                data, window, step
+            )
+        else:
+            raise ValueError(
+                f"Unknown method '{method}'. Choose 'vectorized' or 'iterative'."
+            )
 
 
 @dataclass
@@ -257,6 +324,217 @@ class SpikeDetector:
         )
 
         return result
+
+
+
+class SpikeDetector2:
+    """
+    A class for detecting spikes in signals using various statistical methods.
+    All methods are defined as static.
+    
+    Example
+    -----------
+        # make signal
+        from obspy import read
+        import matplotlib.pyplot as plt
+    
+        st = read('http://examples.obspy.org/RJOB_061005_072159.ehz.new')
+        tr = st[0]
+        times = tr.times()
+        signal = tr.data
+        signal[16700] = 5e4
+        sps = int(tr.stats.sampling_rate)
+        
+        # OR
+        
+        # signal = np.random.random(1000)
+        # signal[792] = 100
+        # sps = 200
+    
+        kwargs_sliding={
+            "window": 4*sps,
+            "step": 1*sps,
+            "method": "vectorized",
+        }
+        kwargs_spike_suspected={
+            "threshold": 2
+        }
+    
+        all_peaks = srw.SpikeDetector2.detect(
+            signal=signal,
+            kwargs_sliding=kwargs_sliding,
+            kwargs_spike_suspected=kwargs_spike_suspected,
+            skew_threshold=2,
+        )
+    
+        plt.plot(times, signal)
+        plt.scatter(x=times[all_peaks], y=signal[all_peaks], color='r')
+        plt.show()
+    """
+
+    @staticmethod
+    def is_spike_suspected_using_hampel(
+        window,
+        n_sigmas=3.0,
+        check_any=False,
+        center_idx=None
+    ):
+        """
+        Detect spikes using Hampel filter.
+        Based on:
+            INSTANCE - the Italian seismic dataset for machine learning 
+            https://doi.org/10.5194/essd-13-5509-2021
+        This function was generated using Gemini.
+        
+        Check if a single window contains a spike using the Hampel/MAD
+        criterion.
+
+        Parameters:
+            window (array-like):
+                1D array representing a single window.
+            n_sigmas (float):
+                Detection threshold multiplier (default: 3.0).
+            check_any (bool): 
+                - False:
+                    Only evaluates the target/center point (standard Hampel
+                    approach).
+                - True:
+                    Checks if ANY point in the window exceeds the threshold.
+            center_idx (int, optional):
+                Index of the target point. Defaults to the window center.
+
+        Returns:
+            bool: True if a spike is detected, False otherwise.
+        """
+        w = np.asarray(window, dtype=float)
+        if w.ndim != 1:
+            raise ValueError("Input window must be a 1D array.")
+
+        # 1. Compute window median and MAD
+        median = np.median(w)
+        mad = scipy.stats.median_abs_deviation(
+            x=w,
+            scale="normal",
+        )
+
+        # Flat line / zero variance check
+        if mad == 0:
+            return False
+
+        threshold = n_sigmas * mad
+
+        # Case A: Check if any element in the entire window is an outlier
+        if check_any:
+            has_spike = bool(np.any(np.abs(w - median) > threshold))
+            return has_spike
+
+        # Case B: Standard Hampel behavior (evaluate specific target point)
+        if center_idx is None:
+            center_idx = len(w) // 2
+
+        target_diff = np.abs(w[center_idx] - median)
+        is_spike = bool(target_diff > threshold)
+        return is_spike
+
+    @staticmethod
+    def is_spike_suspected_using_skewness(
+        window,
+        threshold=2,
+        bias=False,
+    ):
+        """
+        Check if a window is suspected of containing a spike based on its
+        skewness.
+        
+        Parameters:
+            window (array-like):
+                1D array representing a single window.
+            threshold (float):
+                Skewness threshold to flag a spike (default: 2).
+            bias (bool):
+                If False, then the calculations are corrected for statistical
+                bias.
+            
+        Returns:
+            bool:
+                True if the absolute skewness exceeds the threshold,
+                False otherwise.
+        """
+        skew = scipy.stats.skew(a=window, bias=bias)
+        spike_suspicious = abs(skew) > threshold
+        
+        return spike_suspicious
+
+    @staticmethod
+    def detect(
+        signal,
+        kwargs_sliding={
+            "window": None,
+            "step": None,
+            "method": "vectorized",
+        },
+        kwargs_spike_suspected={
+            "threshold": 2
+        },
+        skew_threshold=2,
+    ):
+        """
+        Process the entire signal using sliding windows to detect spikes.
+        
+        Parameters:
+            signal (array-like):
+                The input 1D signal array.
+            window_size (int):
+                Size of the sliding window.
+            step_size (int):
+                Step size for moving the sliding window.
+            skew_threshold (float):
+                Threshold for the skewness check.
+            
+        Returns:
+            list: A list of unique indices where spikes were detected.
+        """
+        windows, start_indices = SlidingWindowProcessor.transform(
+            data=signal,
+            **kwargs_sliding
+        )
+
+        all_spikes = []
+        for start_index, window in zip(start_indices, windows):
+            # Call the static method from within the class
+            spike_suspicious = SpikeDetector2.is_spike_suspected_using_skewness(
+                window=window,
+                **kwargs_spike_suspected
+            )
+            
+            if spike_suspicious:
+                mad = scipy.stats.median_abs_deviation(x=window, scale=1.0)
+                window_size = kwargs_sliding['window']
+                peaks, properties = scipy.signal.find_peaks(
+                    x=np.abs(window),
+                    # x=window,
+                    height=None,
+                    threshold=None,
+                    distance=window_size,
+                    prominence=10*mad,
+                    width=None,
+                    wlen=None,
+                    rel_height=0.5,
+                    plateau_size=None
+                )
+                
+                # Prevent ValueError when no peaks are found in the window
+                if len(peaks) > 0:
+                    all_spikes.append(peaks + start_index)
+        
+        # Concatenate and remove duplicate indices
+        if all_spikes:
+            all_spikes = np.concatenate(all_spikes)
+            all_spikes = list(set(all_spikes))
+        else:
+            all_spikes = []
+            
+        return all_spikes
 
 
 class SNR:
