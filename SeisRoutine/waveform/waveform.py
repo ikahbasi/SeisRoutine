@@ -472,7 +472,7 @@ class SpikeDetector2:
             "step": None,
             "method": "vectorized",
         },
-        kwargs_spike_suspected={
+        kwargs_spike_suspected_skewness={
             "threshold": 2
         },
     ):
@@ -500,7 +500,7 @@ class SpikeDetector2:
             # Call the static method from within the class
             spike_suspicious = SpikeDetector2.is_spike_suspected_using_skewness(
                 window=window,
-                **kwargs_spike_suspected
+                **kwargs_spike_suspected_skewness
             )
             
             if spike_suspicious:
