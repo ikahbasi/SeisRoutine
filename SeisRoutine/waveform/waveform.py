@@ -364,7 +364,6 @@ class SpikeDetector2:
             signal=signal,
             kwargs_sliding=kwargs_sliding,
             kwargs_spike_suspected=kwargs_spike_suspected,
-            skew_threshold=2,
         )
     
         plt.plot(times, signal)
@@ -476,7 +475,6 @@ class SpikeDetector2:
         kwargs_spike_suspected={
             "threshold": 2
         },
-        skew_threshold=2,
     ):
         """
         Process the entire signal using sliding windows to detect spikes.
@@ -488,8 +486,6 @@ class SpikeDetector2:
                 Size of the sliding window.
             step_size (int):
                 Step size for moving the sliding window.
-            skew_threshold (float):
-                Threshold for the skewness check.
             
         Returns:
             list: A list of unique indices where spikes were detected.
