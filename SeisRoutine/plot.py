@@ -467,3 +467,252 @@ def compare_multiple_distributions(*arrays, labels=None, colors=None,
     plt.tight_layout()
     _finalise_ax(ax, **kwargs)
     _finalise_figure(fig, **kwargs)
+
+
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Sep 20 11:23:35 2026
+
+@author: ikahbasi
+"""
+
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
+import matplotlib.cm as cm
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+def plot_seismograms(
+    datasets: Optional[Mapping[str, Dict[str, np.ndarray]]] = None,
+    *,
+    height_ratios: Optional[Sequence[Union[int, float]]] = None,
+    time_key: str = "time",
+    color_scheme: Optional[Union[str, list, dict]] = None,
+    base_linewidth: float = 1.8,
+    linewidth_decay: float = 0.4,
+    min_linewidth: float = 0.6,
+    fig_width: float = 11.0,
+    panel_height: float = 2.6,
+    grid: bool = True,
+    **named_datasets: Dict[str, np.ndarray],
+) -> tuple[plt.Figure, np.ndarray]:
+    """
+    Plot multi-panel earthquake time series with stacked, zero-spaced subplots
+    and customizable panel height ratios.
+
+    Parameters
+    ----------
+    datasets : Mapping[str, Dict[str, np.ndarray]], optional
+        Dictionary mapping panel titles to signal dictionaries.
+    height_ratios : Sequence[int or float], optional
+        Relative height multipliers for each panel (e.g., [2, 1, 1]).
+        Length must match the number of active panels.
+        Defaults to None (all panels have equal height).
+    time_key : str, default "time"
+        The key designating the time vector in each dataset dictionary.
+    color_scheme : str, list, or dict, optional
+        Color assignment scheme (palette name, color list, or key-to-color
+                                 mapping).
+    base_linewidth : float, default 1.8
+        Thickness of the first plotted curve in each panel.
+    linewidth_decay : float, default 0.4
+        Amount to reduce line thickness for each subsequent curve in the panel.
+    min_linewidth : float, default 0.6
+        Hard lower bound for curve thickness.
+    fig_width : float, default 11.0
+        Width of the figure in inches.
+    panel_height : float, default 2.6
+        Reference height in inches per unit ratio (determines total figure
+                                                   height).
+    grid : bool, default True
+        Whether to show aligned horizontal and vertical gridlines.
+    **named_datasets : Dict[str, np.ndarray]
+        Alternative syntax allowing panels to be passed as keyword arguments.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+    axes : np.ndarray of matplotlib.axes.Axes
+    
+    Example
+    -------
+        import numpy as np
+        import matplotlib.pyplot as plt
+    
+        # Generate synthetic earthquake data
+        t = np.linspace(0, 10, 1000)
+    
+        raw_waveform = {
+            "Z": np.sin(2 * np.pi * 1.5 * t) * np.exp(-0.25 * t),
+            "E": 0.8 * np.sin(2 * np.pi * 2.0 * t + 0.4) * np.exp(-0.2 * t),
+            "N": 0.6 * np.cos(2 * np.pi * 1.2 * t) * np.exp(-0.15 * t),
+            "time": t,
+        }
+    
+        envelope = {
+            "Env-Z": np.abs(np.sin(2 * np.pi * 1.5 * t) * np.exp(-0.25 * t)),
+            "time": t,
+        }
+    
+        phase_probability = {
+            "P-Phase": 1.0 / (1.0 + np.exp(-3.5 * (t - 2.5))),
+            "S-Phase": 1.0 / (1.0 + np.exp(-3.0 * (t - 5.0))),
+            "time": t,
+        }
+    
+        custom_colors = {
+            "Z": "#1f77b4",
+            "E": "#2ca02c",
+            "N": "#9467bd",
+            "P-Phase": "#d62728",
+            "S-Phase": "#ff7f0e",
+        }
+                
+        # 3 panels: First panel is 3x taller, second is 1.5x, third is 1x
+        fig, axes = plot_seismograms(
+            waveform=raw_waveform,
+            envelope=envelope,
+            phase_probability=phase_probability,
+            height_ratios=[3, 1.5, 1],
+            # color_scheme="tab10",
+            color_scheme=custom_colors,
+        )
+    
+        plt.show()
+    """
+    # Merge and filter valid datasets
+    merged_data: dict[str, dict[str, np.ndarray]] = {}
+    if datasets:
+        merged_data.update(
+            {k: v for k, v in datasets.items()
+             if v is not None and len(v) > 0}
+        )
+    if named_datasets:
+        merged_data.update(
+            {
+                k: v
+                for k, v in named_datasets.items()
+                if v is not None and len(v) > 0
+            }
+        )
+
+    num_panels = len(merged_data)
+    if num_panels == 0:
+        raise ValueError("No valid datasets provided to plot.")
+
+    # Validate and prepare height ratios
+    if height_ratios is not None:
+        if len(height_ratios) != num_panels:
+            msg = (
+                f"Length of 'height_ratios' ({len(height_ratios)}) must match "
+                f"the number of active panels ({num_panels})."
+            )
+            raise ValueError(msg)
+        if any(r <= 0 for r in height_ratios):
+            msg = "All entries in 'height_ratios' must be positive numbers."
+            raise ValueError(msg)
+        ratios = list(height_ratios)
+    else:
+        ratios = [1.0] * num_panels
+
+    # Scale total figure height proportionally to the normalized ratio sum
+    mean_ratio = sum(ratios) / num_panels
+    total_height = max(panel_height * (sum(ratios) / mean_ratio), 3.0)
+
+    fig, axes = plt.subplots(
+        nrows=num_panels,
+        ncols=1,
+        sharex=True,
+        figsize=(fig_width, total_height),
+        gridspec_kw={
+            "hspace": 0.0,
+            "height_ratios": ratios,
+        },
+    )
+
+    if num_panels == 1:
+        axes = np.array([axes])
+
+    def resolve_color(channel_idx: int, channel_name: str) -> Any:
+        if isinstance(color_scheme, dict):
+            if channel_name in color_scheme:
+                return color_scheme[channel_name]
+            fallback_cmap = plt.get_cmap("tab10")
+            return fallback_cmap(channel_idx % 10)
+        elif isinstance(color_scheme, list):
+            return color_scheme[channel_idx % len(color_scheme)]
+        elif isinstance(color_scheme, str):
+            palette = plt.get_cmap(color_scheme)
+            return palette(channel_idx % getattr(palette, "N", 10))
+        return plt.get_cmap("tab10")(channel_idx % 10)
+
+    for ax_idx, (panel_name, data_dict) in enumerate(merged_data.items()):
+        ax = axes[ax_idx]
+
+        if time_key not in data_dict:
+            msg = (
+                f"Missing required time key '{time_key}' "
+                f"in panel '{panel_name}'."
+            )
+            raise KeyError(msg)
+
+        time_vec = data_dict[time_key]
+        signal_keys = [k for k in data_dict.keys() if k != time_key]
+
+        for s_idx, sig_name in enumerate(signal_keys):
+            signal_data = data_dict[sig_name]
+            line_width = max(
+                base_linewidth - (s_idx * linewidth_decay), min_linewidth
+            )
+            color = resolve_color(s_idx, sig_name)
+
+            ax.plot(
+                time_vec,
+                signal_data,
+                label=sig_name,
+                linewidth=line_width,
+                color=color,
+                alpha=0.92,
+            )
+
+        if grid:
+            ax.grid(True, linestyle="--", linewidth=0.6, alpha=0.6)
+
+        # Panel title placed inside top-left
+        ax.text(
+            0.015,
+            0.88,
+            panel_name,
+            transform=ax.transAxes,
+            fontsize=11,
+            fontweight="semibold",
+            va="top",
+            ha="left",
+            bbox=dict(
+                boxstyle="square,pad=0.25",
+                facecolor="white",
+                edgecolor="none",
+                alpha=0.85,
+            ),
+        )
+
+        ax.legend(
+            loc="upper right",
+            frameon=True,
+            framealpha=0.85,
+            edgecolor="none",
+            fontsize=9,
+            ncol=min(len(signal_keys), 4),
+        )
+
+        # Remove intermediate tick labels while keeping the bottom panel intact
+        if ax_idx < num_panels - 1:
+            ax.tick_params(axis="x", which="both", labelbottom=False)
+
+    axes[-1].set_xlabel("Time (s)", fontsize=11, labelpad=8)
+    axes[0].set_xlim(
+        left=min(v[time_key][0] for v in merged_data.values()),
+        right=max(v[time_key][-1] for v in merged_data.values()),
+    )
+
+    return fig, axes
