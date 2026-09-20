@@ -526,7 +526,7 @@ class SpikeDetector2:
         # Concatenate and remove duplicate indices
         if all_spikes:
             all_spikes = np.concatenate(all_spikes)
-            all_spikes = list(set(all_spikes))
+            all_spikes = sorted(set(all_spikes))
         else:
             all_spikes = []
             
