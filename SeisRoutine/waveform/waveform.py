@@ -15,6 +15,7 @@ import pywt
 from dataclasses import dataclass
 from pathlib import Path
 from numpy.lib.stride_tricks import sliding_window_view
+from collections import Counter
 
 
 class SlidingWindowProcessor:
@@ -475,6 +476,17 @@ class SpikeDetector2:
         kwargs_spike_suspected_skewness={
             "threshold": 2
         },
+        kwargs_find_peaks={
+            'height': None,
+            'threshold': None,
+            'distance': None,
+            'prominence': lambda mad, **_: 10 * mad,
+            'width': None,
+            'wlen': None,
+            'rel_height': 0.5,
+            'plateau_size': None,
+        },
+        min_detection_count=2,
     ):
         """
         Process the entire signal using sliding windows to detect spikes.
@@ -495,7 +507,7 @@ class SpikeDetector2:
             **kwargs_sliding
         )
 
-        all_spikes = []
+        spike_arrays = []
         for start_index, window in zip(start_indices, windows):
             # Call the static method from within the class
             spike_suspicious = SpikeDetector2.is_spike_suspected_using_skewness(
@@ -504,33 +516,45 @@ class SpikeDetector2:
             )
             
             if spike_suspicious:
-                mad = scipy.stats.median_abs_deviation(x=window, scale=1.0)
-                window_size = kwargs_sliding['window']
+                
+                context = {
+                    'mad':
+                        scipy.stats.median_abs_deviation(
+                            x=window,
+                            scale=1.0,
+                        ),
+                }
+
+                kwargs_find_peaks_resolve = {
+                    k: (v(**context) if callable(v) else v)
+                    for k, v in kwargs_find_peaks.items()
+                    if v is not None
+                }
                 peaks, properties = scipy.signal.find_peaks(
                     x=np.abs(window),
-                    # x=window,
-                    height=None,
-                    threshold=None,
-                    distance=window_size,
-                    prominence=10*mad,
-                    width=None,
-                    wlen=None,
-                    rel_height=0.5,
-                    plateau_size=None
+                    **kwargs_find_peaks_resolve
                 )
                 
                 # Prevent ValueError when no peaks are found in the window
                 if len(peaks) > 0:
-                    all_spikes.append(peaks + start_index)
+                    spike_arrays.append(peaks + start_index)
         
         # Concatenate and remove duplicate indices
-        if all_spikes:
-            all_spikes = np.concatenate(all_spikes)
-            all_spikes = sorted(set(all_spikes))
-        else:
-            all_spikes = []
+        if spike_arrays:
+            all_spikes = np.concatenate(spike_arrays)
             
-        return all_spikes
+            spike_counts = Counter(all_spikes)
+            
+            selected_spikes = sorted(
+                {
+                    val for val, count in spike_counts.items()
+                    if count >= min_detection_count
+                }
+            )
+        else:
+            selected_spikes = []
+            
+        return selected_spikes
 
 
 class SNR:
