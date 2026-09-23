@@ -468,6 +468,7 @@ class SpikeDetector2:
     @staticmethod
     def detect(
         signal,
+        absolute_signal=True,
         kwargs_sliding={
             "window": None,
             "step": None,
@@ -530,10 +531,21 @@ class SpikeDetector2:
                     for k, v in kwargs_find_peaks.items()
                     if v is not None
                 }
-                peaks, properties = scipy.signal.find_peaks(
-                    x=np.abs(window),
-                    **kwargs_find_peaks_resolve
-                )
+                if absolute_signal:
+                    peaks, properties = scipy.signal.find_peaks(
+                        x=np.abs(window),
+                        **kwargs_find_peaks_resolve
+                    )
+                else:
+                    pos_peaks, properties = scipy.signal.find_peaks(
+                        x=window,
+                        **kwargs_find_peaks_resolve
+                    )
+                    neg_peaks, properties = scipy.signal.find_peaks(
+                        x=-window,
+                        **kwargs_find_peaks_resolve
+                    )
+                    peaks = np.concatenate([pos_peaks, neg_peaks])
                 
                 # Prevent ValueError when no peaks are found in the window
                 if len(peaks) > 0:
