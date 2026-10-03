@@ -714,3 +714,91 @@ class Tapering:
         taper = signal.windows.tukey(x.shape[-1], self.alpha)
         x = x * taper
         state_dict[self.key[1]] = (x, metadata)
+
+def get_stream(self, idx):
+    """
+   Return a single dataset sample as an :class:`obspy.core.stream.Stream`.
+
+   This method is meant to be attached to a dataset instance as a
+   monkey-patch, for example::
+       
+       # type(dataset) is <seisbench.data.base.WaveformDataset>
+
+       dataset.get_stream = get_stream.__get__(dataset)
+
+   Parameters
+   ----------
+   idx : int
+       Index of the sample in the dataset. It is passed directly to
+       :meth:`seisbench.data.base.WaveformDataset.get_sample`.
+
+   Returns
+   -------
+   obspy.core.stream.Stream
+       A ``Stream`` containing one :class:`obspy.core.trace.Trace` per
+       component listed in ``self.component_order`` (e.g. ``"Z"``,
+       ``"N"``, ``"E"``). The header of each ``Trace`` is populated
+       from the metadata record of the requested sample.
+
+   Raises
+   ------
+   ValueError
+       If the number of channels returned by ``get_sample`` does not
+       match ``len(self.component_order)``, or if the sample's
+       ``trace_start_time`` is missing or invalid.
+
+   Notes
+   -----
+   - The component order is taken from ``self.component_order`` and
+     therefore follows the dataset's own convention (commonly
+     ``"ZNE"``).
+   - The channel code of each ``Trace`` is built by concatenating the
+     ``trace_channel`` field of the metadata (e.g. ``"BH"``) with the
+     corresponding component (e.g. ``"Z"``), yielding codes such as
+     ``"BHZ"``.
+   - Metadata fields that are ``None``, ``NaN`` or ``NaT`` are replaced
+     with an empty string so that ObsPy does not raise on them.
+   - This method returns the *raw* dataset sample and does **not**
+     apply any augmentation from a
+     :class:`seisbench.generate.GenericGenerator`. To obtain a
+     ``Stream`` after augmentation, a similar method should be defined
+     on the generator and the ``starttime`` adjusted according to the
+     applied window offset and time shift.
+
+   Examples
+   --------
+   >>> dataset.get_stream = get_stream.__get__(dataset)
+   >>> st = dataset.get_stream(0)
+   >>> print(st)
+   3 Trace(s) in Stream:
+   XX.STA01..BHZ | ...
+   XX.STA01..BHN | ...
+   XX.STA01..BHE | ...
+   """
+    def _clean(v):
+        if v is None or pd.isna(v):
+            return ''
+        return v
+    
+    tr_lst = []
+    data_3c, metadata = dataset.get_sample(idx=idx)
+    header = {
+        "network": _clean(metadata.get('station_network_code')),
+        "station": _clean(metadata.get('station_code')),
+        "location": _clean(metadata.get('station_location_code')),
+        "channel": None,
+        "sampling_rate": _clean(metadata.get('trace_sampling_rate_hz')),
+        "starttime": metadata.get('trace_start_time'),
+    }
+    for data_1c, channel in zip(data_3c, self.component_order):
+        header.update({
+            "channel": metadata['trace_channel'] + channel
+        })
+        tr = Trace(
+            data=data_1c,
+            header=header,
+        )
+        tr_lst.append(tr)
+    st = Stream(tr_lst)
+    
+    return st
