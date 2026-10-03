@@ -717,7 +717,7 @@ class Tapering:
         x = x * taper
         state_dict[self.key[1]] = (x, metadata)
 
-def get_stream(self, idx):
+def get_stream(self, idx, header_alt={}):
     """
    Return a single dataset sample as an :class:`obspy.core.stream.Stream`.
 
@@ -792,6 +792,11 @@ def get_stream(self, idx):
         "sampling_rate": metadata.get('trace_sampling_rate_hz'),
         "starttime": metadata.get('trace_start_time'),
     }
+    for k, v in header.items():
+        if k in header_alt.keys():
+            header.update({
+                k: header_alt[k]
+            })
     for data_1c, channel in zip(data_3c, self.component_order):
         header.update({
             "channel": metadata['trace_channel'] + channel
