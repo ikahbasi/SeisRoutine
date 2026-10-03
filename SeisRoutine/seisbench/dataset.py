@@ -8,6 +8,8 @@ import SeisRoutine.catalog as src
 import re
 import SeisRoutine.config as srconf
 import logging
+from obspy.core.trace import Trace
+from obspy.core.stream import Stream
 
 def make_generator(dataset, augmentations):
     gen = sbg.GenericGenerator(dataset)
@@ -781,13 +783,13 @@ def get_stream(self, idx):
         return v
     
     tr_lst = []
-    data_3c, metadata = dataset.get_sample(idx=idx)
+    data_3c, metadata = self.get_sample(idx=idx)
     header = {
         "network": _clean(metadata.get('station_network_code')),
         "station": _clean(metadata.get('station_code')),
         "location": _clean(metadata.get('station_location_code')),
         "channel": None,
-        "sampling_rate": _clean(metadata.get('trace_sampling_rate_hz')),
+        "sampling_rate": metadata.get('trace_sampling_rate_hz'),
         "starttime": metadata.get('trace_start_time'),
     }
     for data_1c, channel in zip(data_3c, self.component_order):
