@@ -881,7 +881,7 @@ def get_stream_from_gen(self, idx, shift_fixed_time=0, header_alt=None):
       from ``self.dataset.metadata.iloc[idx]``. These are the original
       dataset metadata and may not necessarily reflect changes made to
       metadata by individual augmentations.
-      
+
     - The generator must not use shuffling (e.g.
       :class:`seisbench.generate.Shuffle`). This method assumes that
       the sample returned by ``self[idx]`` corresponds to the metadata
@@ -944,13 +944,12 @@ def get_stream_from_gen(self, idx, shift_fixed_time=0, header_alt=None):
         if v is None or pd.isna(v):
             return ''
         return v
-    
+
     if header_alt is None:
         header_alt = {}
-    
+
     tr_lst = []
     data_sample = self[idx]
-    print(data_sample)
     data_3c = data_sample['X']
     metadata = self.dataset.metadata.iloc[idx]
     header = {
@@ -978,5 +977,5 @@ def get_stream_from_gen(self, idx, shift_fixed_time=0, header_alt=None):
     st = Stream(tr_lst)
     for tr in st:
         tr.stats.starttime += shift_fixed_time
-    
+
     return st
