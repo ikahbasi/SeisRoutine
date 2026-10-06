@@ -7,6 +7,7 @@ from concurrent.futures import (
 from dataclasses import dataclass, field
 import typing
 import seisbench.models as sbm
+import torch
 
 logger = logging.getLogger(__name__)
 
@@ -349,3 +350,38 @@ class ModelCache:
             )
 
         return result
+
+
+def move_models_to_gpu(dl_pickers):
+    """
+    Move all deep-learning models to the available CUDA device.
+
+    If CUDA is unavailable, models remain on CPU.
+    If transferring an individual model fails, that model remains on CPU
+    and the function continues with the remaining models.
+    """
+    if not torch.cuda.is_available():
+        logging.info("Running on CPU. CUDA is not available!")
+        return
+
+    for key, dl_picker in dl_pickers.items():
+        msg_model = (
+            f"{key=}\n"
+            f"{dl_picker.name=}\n"
+            f"{dl_picker.weights_version=}\n"
+            f"{dl_picker.weights_docstring=}\n"
+        )
+
+        try:
+            dl_picker.cuda()
+        except Exception as error:
+            logging.warning(
+                "key=%s Running on CPU due to %s.\n%s",
+                key, error, msg_model,
+            )
+            continue
+
+        logging.info(
+            "Running on GPU.\n%s",
+            msg_model
+        )
