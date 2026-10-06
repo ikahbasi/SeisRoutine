@@ -881,6 +881,15 @@ def get_stream_from_gen(self, idx, shift_fixed_time=0, header_alt=None):
       from ``self.dataset.metadata.iloc[idx]``. These are the original
       dataset metadata and may not necessarily reflect changes made to
       metadata by individual augmentations.
+      
+    - The generator must not use shuffling (e.g.
+      :class:`seisbench.generate.Shuffle`). This method assumes that
+      the sample returned by ``self[idx]`` corresponds to the metadata
+      record at ``self.dataset.metadata.iloc[idx]`` and that the
+      component order matches ``self.dataset.component_order``. If the
+      generator shuffles samples, the augmented data and the metadata
+      used to build the trace headers will no longer be aligned, and
+      the resulting ``Stream`` will contain incorrect metadata.
 
     - The component order is taken from
       ``self.dataset.component_order`` and therefore follows the
