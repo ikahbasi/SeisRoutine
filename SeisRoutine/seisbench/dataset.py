@@ -86,8 +86,8 @@ def find_ps_pairs(
 
 def fill_missing_channels(
         available_channels,
-        reference_channels={0: "E", 1: "N", 2: "Z"},
-        priority_channels={0: 1, 1: 1, 2: 1},
+        reference_channels=None,
+        priority_channels=None,
         ):
     """
     Generate a complete channel mapping by replacing missing channels with
@@ -165,6 +165,18 @@ def fill_missing_channels(
     [0, 1, 0]
     [0, 0, 2]
     """
+    if reference_channels is None:
+        reference_channels = {
+            0: "E",
+            1: "N",
+            2: "Z",
+        }
+    if priority_channels is None:
+        priority_channels = {
+            0: 1,
+            1: 1,
+            2: 1,
+        }
     available_channels = sorted(available_channels)
     defect_channels = set(reference_channels.keys()) - set(available_channels)
     output = available_channels
