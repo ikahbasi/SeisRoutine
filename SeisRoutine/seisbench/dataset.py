@@ -179,7 +179,12 @@ def fill_missing_channels(
         }
     available_channels = sorted(available_channels)
     defect_channels = set(reference_channels.keys()) - set(available_channels)
-    output = available_channels
+
+    # NOTE: `output` must be a *copy* of `available_channels`, not an alias.
+    # If we assigned directly (`output = available_channels`), the subsequent
+    # `insert()` calls would mutate the caller's list in place, causing
+    # unexpected side effects outside this function.
+    output = list(available_channels) # Copy to avoid mutating the caller's list when inserting below.
     if available_channels==[] or defect_channels=={}:
         pass
     else:
