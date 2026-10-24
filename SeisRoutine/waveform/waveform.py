@@ -1631,3 +1631,174 @@ class NoiseGenerator:
             base_noise = raw_noise
 
         return scale_factor * base_noise
+
+
+import numpy as np
+from scipy import signal
+
+
+class SpectralPowerRatio:
+    """
+    Welch power spectral density and band-power ratios for a 1-D signal.
+
+    Example
+    -------
+    >>> sp = SpectralPowerRatio(fs=100, nperseg=512)
+    >>> sp.fit(x)
+    >>> sp.band_power(1, 10)             # summed PSD in 1-10 Hz
+    >>> sp.ratio((1, 10), (10, 40))      # power(1-10 Hz) / power(10-40 Hz)
+    >>> sp.fraction((40, 50))            # share of total power in 40-50 Hz
+
+    Notes
+    -----
+    * "Band power" is the sum of PSD values over the frequency bins that fall
+      inside the band. In a ratio the bin width (df) cancels out, so the plain
+      sum is sufficient.
+    * Bands are half-open, [lo, hi), so a bin on the shared edge of two
+      adjacent bands is never counted twice. If hi equals the Nyquist
+      frequency, the Nyquist bin is included.
+    """
+
+    def __init__(self, fs, nperseg=512, detrend="linear", **welch_kwargs):
+        """
+        Parameters
+        ----------
+        fs : float
+            Sampling rate in Hz.
+        nperseg : int
+            Segment length passed to scipy.signal.welch. Frequency resolution
+            is fs / nperseg. Automatically reduced to len(x) for short signals.
+        detrend : {"linear", "constant", False}
+            Detrending applied to each segment.
+        **welch_kwargs
+            Any other keyword argument for scipy.signal.welch
+            (e.g. window="hann", noverlap=256).
+        """
+        self.fs = float(fs)
+        self.nperseg = int(nperseg)
+        self.detrend = detrend
+        self.welch_kwargs = welch_kwargs
+        self.freqs = None   # frequency axis in Hz, set by fit()
+        self.psd = None     # power spectral density, set by fit()
+
+    # ------------------------------------------------------------------ fit
+    def fit(self, x):
+        """Compute the Welch PSD of x and store it. Returns self for chaining."""
+        x = np.asarray(x, dtype=float)
+        if x.ndim != 1 or x.size < 2:
+            raise ValueError("x must be a 1-D array with at least 2 samples")
+        if not np.all(np.isfinite(x)):
+            raise ValueError("x contains NaN or Inf")
+        nper = min(self.nperseg, x.size)
+        self.freqs, self.psd = signal.welch(
+            x, self.fs, nperseg=nper, detrend=self.detrend, **self.welch_kwargs
+        )
+        return self
+
+    # ------------------------------------------------------------ internals
+    def _check_fitted(self):
+        if self.freqs is None:
+            raise RuntimeError("Call fit(x) first")
+
+    def _mask(self, band):
+        """Boolean mask of frequency bins inside the half-open band [lo, hi)."""
+        lo, hi = band
+        nyq = self.fs / 2
+        if not (0 <= lo < hi <= nyq):
+            raise ValueError(
+                f"Invalid band {band}; require 0 <= lo < hi <= {nyq} (Nyquist)"
+            )
+        m = (self.freqs >= lo) & (self.freqs < hi)
+        if hi == nyq:                      # include the Nyquist bin itself
+            m |= self.freqs == nyq
+        if not m.any():
+            raise ValueError(
+                f"Band {band} contains no frequency bins (resolution is "
+                f"{self.freqs[1]:.3f} Hz). Increase nperseg or widen the band."
+            )
+        return m
+
+    # ------------------------------------------------------------------ API
+    def band_power(self, f_lo, f_hi):
+        """Sum of PSD values in [f_lo, f_hi) Hz."""
+        self._check_fitted()
+        return float(self.psd[self._mask((f_lo, f_hi))].sum())
+
+    def mean_power(self, f_lo, f_hi):
+        """Mean PSD value in [f_lo, f_hi) Hz (band power / number of bins)."""
+        self._check_fitted()
+        return float(self.psd[self._mask((f_lo, f_hi))].mean())
+
+    def ratio(self, num_band, den_band, mode="sum"):
+        """
+        Ratio of band power: numerator band / denominator band.
+
+        Parameters
+        ----------
+        num_band, den_band : tuple[float, float]
+            (f_lo, f_hi) in Hz for the numerator and denominator.
+        mode : {"sum", "mean"}
+            "sum"  : ratio of total band power (energy share). Depends on the
+                     bandwidth of both bands: a flat (white) spectrum gives
+                     bandwidth_num / bandwidth_den.
+            "mean" : ratio of mean PSD (bandwidth-normalised spectral level).
+                     A flat spectrum gives 1 regardless of band widths.
+
+        Returns
+        -------
+        float
+            The requested ratio, or NaN if the denominator is zero.
+        """
+        if mode == "sum":
+            f = self.band_power
+        elif mode == "mean":
+            f = self.mean_power
+        else:
+            raise ValueError("mode must be 'sum' or 'mean'")
+        num = f(*num_band)
+        den = f(*den_band)
+        return num / den if den > 0 else float("nan")
+
+    def fraction(self, band):
+        """Share (0-1) of the total power that lies inside `band`."""
+        self._check_fitted()
+        tot = float(self.psd.sum())
+        return self.band_power(*band) / tot if tot > 0 else float("nan")
+
+    def ratios(self, num_band, den_band, signals, mode="sum"):
+        """
+        Compute ratio() for several signals.
+
+        Parameters
+        ----------
+        mode : {"sum", "mean"}
+            Passed to ratio().
+        signals : dict or sequence of 1-D arrays
+            e.g. {"Z": xz, "N": xn, "E": xe}
+
+        Returns
+        -------
+        dict
+            Same keys as `signals` (or indices for a sequence) -> ratio.
+        """
+        items = signals.items() if isinstance(signals, dict) else enumerate(signals)
+        return {k: self.fit(x).ratio(num_band, den_band, mode) for k, x in items}
+
+    def fractions(self, band, signals):
+        """
+        Compute fraction() for several signals.
+
+        Parameters
+        ----------
+        band : tuple[float, float]
+            (f_lo, f_hi) in Hz.
+        signals : dict or sequence of 1-D arrays
+            e.g. {"Z": xz, "N": xn, "E": xe}
+
+        Returns
+        -------
+        dict
+            Same keys as `signals` (or indices for a sequence) -> fraction.
+        """
+        items = signals.items() if isinstance(signals, dict) else enumerate(signals)
+        return {k: self.fit(x).fraction(band) for k, x in items}
