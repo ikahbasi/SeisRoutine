@@ -1102,9 +1102,9 @@ def fft(array, delta, segment=None):
     '''
     npts = array.size
     segment = segment or scipy.fftpack.helper.next_fast_len(npts)
-    freq = np.fft.fftfreq(segment, d=delta)[: npts//2]
+    freq = np.fft.fftfreq(segment, d=delta)[: segment//2]
     ampl = scipy.fftpack.fft(array, segment) * delta
-    ampl = np.abs(ampl[: npts//2]) / (segment*delta) # time of data = segment * delta
+    ampl = np.abs(ampl[: segment//2]) / (segment*delta) # time of data = segment * delta
     return freq, ampl
 
 
