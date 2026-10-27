@@ -998,7 +998,7 @@ def get_stream_from_gen(self, idx, shift_fixed_time=0, header_alt=None):
     return st
 
 
-def get_remaining_channels(df, remove_elements=True, reference_channels=None):
+def get_remaining_channels(df, remove_elements=True, component_order="ENZ"):
     """
     Return, for each row, the set of channels whose value differs from
     `remove_elements`.
@@ -1011,17 +1011,17 @@ def get_remaining_channels(df, remove_elements=True, reference_channels=None):
     remove_elements : bool, default True
         Value to exclude. Channels whose cell equals this value are
         dropped from the output set.
-    reference_channels : dict[str, int] or None, default None
+    reference_channels : str, default `ENZ`
         Mapping from channel suffix to channel id. Defaults to
-        {"E": 0, "N": 1, "Z": 2}.
+        `ENZ` that means {"E": 0, "N": 1, "Z": 2}.
 
     Returns
     -------
     list[set[int]]
         One set of channel ids per row.
     """
-    if reference_channels is None:
-        reference_channels = {"E": 0, "N": 1, "Z": 2}
+    reference_channels = {cha: idx for idx, cha in enumerate(component_order)}
+
 
     # Map each column name to its channel id via the last character.
     def channel_id(col_name: str) -> int:
