@@ -996,3 +996,48 @@ def get_stream_from_gen(self, idx, shift_fixed_time=0, header_alt=None):
         tr.stats.starttime += shift_fixed_time
 
     return st
+
+
+def get_remaining_channels(df, remove_elements=True, reference_channels=None):
+    """
+    Return, for each row, the set of channels whose value differs from
+    `remove_elements`.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Input frame. Column names must end with a channel suffix
+        (e.g. "E", "N", "Z").
+    remove_elements : bool, default True
+        Value to exclude. Channels whose cell equals this value are
+        dropped from the output set.
+    reference_channels : dict[str, int] or None, default None
+        Mapping from channel suffix to channel id. Defaults to
+        {"E": 0, "N": 1, "Z": 2}.
+
+    Returns
+    -------
+    list[set[int]]
+        One set of channel ids per row.
+    """
+    if reference_channels is None:
+        reference_channels = {"E": 0, "N": 1, "Z": 2}
+
+    # Map each column name to its channel id via the last character.
+    def channel_id(col_name: str) -> int:
+        suffix = col_name[-1]
+        if suffix not in reference_channels:
+            raise ValueError(f"Unknown channel column: {col_name!r}")
+        return reference_channels[suffix]
+
+    col_ids = {col: channel_id(col) for col in df.columns}
+
+    output = []
+    for _, row in df.iterrows():
+        remain = {
+            col_ids[col]
+            for col, val in row.items()
+            if val != remove_elements
+        }
+        output.append(remain)
+    return output
